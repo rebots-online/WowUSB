@@ -1,0 +1,8 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=WowUSB-DS9
+Exec=wowusbgui
+Icon=/usr/share/icons/WowUSB-DS9/icon.ico
+Terminal=false
+Type=Application
+Categories=Utility;

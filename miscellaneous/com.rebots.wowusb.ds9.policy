@@ -1,0 +1,28 @@
+<?xml version="1.0" ?><!DOCTYPE policyconfig  PUBLIC '-//freedesktop//DTD polkit Policy Configuration 1.0//EN'  'http://www.freedesktop.org/software/polkit/policyconfig-1.dtd'><!-- 
+DOC: https://www.freedesktop.org/software/polkit/docs/latest/polkit.8.html
+--><policyconfig>
+	<vendor>Rebots Online - WowUSB-DS9</vendor>
+	<vendor_url>https://github.com/rebots-online/WowUSB</vendor_url>
+	<icon_name>wowusbgui-icon</icon_name>
+
+	<action id="com.rebots.wowusb.ds9.run-gui-using-pkexec">
+		<description>Run `wowusb` as SuperUser</description>
+		<description xml:lang="zh_TW">以超級使用者(SuperUser)身份執行 `wowusb`</description>
+		<description xml:lang="pl_PL">Uruchom `wowusb` jako root</description>
+		<description xml:lang="pt_BR">Execute `wowusb` como root</description>
+		
+		<message>Authentication is required to run `wowusb` as SuperUser.</message>
+		<message xml:lang="zh_TW">以超級使用者(SuperUser)身份執行 `wowusb` 需要通過身份驗證。</message>
+		<message xml:lang="pl_PL">Wymagana jest autoryzacja do uruchomienia `wowusb` jako root</message>
+        <message xml:lang="pt_BR">A autenticação é necessária para executar `wowusb` como root.</message>
+		
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+		
+		<annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/wowusbgui</annotate>
+   		<annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+	</action>
+</policyconfig>
