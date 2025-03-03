@@ -1,4 +1,4 @@
-from WoeUSB import \
+from WowUSB import \
     core, \
     list_devices, \
     utils, \
