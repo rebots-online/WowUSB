@@ -10,7 +10,7 @@ import subprocess
 import sys
 from xml.dom.minidom import parseString
 
-import WoeUSB.miscellaneous as miscellaneous
+import WowUSB.miscellaneous as miscellaneous
 
 _ = miscellaneous.i18n
 
@@ -136,7 +136,7 @@ def check_fat32_filesize_limitation(source_fs_mountpoint):
                         "yellow")
                     print_with_color(
                         _(
-                            "Refer: https://github.com/slacka/WoeUSB/wiki/Limitations#fat32-filesystem-4gib-single-file-size-limitation for more info."),
+                            "Refer: https://github.com/rebots-online/WowUSB/wiki/Limitations#fat32-filesystem-4gib-single-file-size-limitation for more info."),
                         "yellow")
                     return 1
             except OSError:
@@ -365,8 +365,8 @@ def update_policy_to_allow_for_running_gui_as_root(path):
         "'http://www.freedesktop.org/software/polkit/policyconfig-1.dtd'><!-- \n"
         "DOC: https://www.freedesktop.org/software/polkit/docs/latest/polkit.8.html\n"
         "--><policyconfig>\n"
-        "	<vendor>The WoeUSB Project</vendor>\n"
-        "	<vendor_url>https://github.com/slacka/WoeUSB</vendor_url>\n"
+        "	<vendor>The WowUSB Project</vendor>\n"
+        "	<vendor_url>https://github.com/rebots-online/WowUSB</vendor_url>\n"
         "	<icon_name>woeusbgui-icon</icon_name>\n"
         "\n"
         "	<action id=\"com.github.slacka.woeusb.run-gui-using-pkexec\">\n"

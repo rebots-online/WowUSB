@@ -3,7 +3,7 @@
 # (C)2025 Robin L. M. Cheung, MBA
 
 """
-Virtual disk handler modules for WoeUSB to support ISO images larger than 4GB.
+Virtual disk handler modules for WowUSB to support ISO images larger than 4GB.
 
 This module provides implementation for various virtual disk formats (VHD, QCOW2, IMG)
 that can handle large Windows ISOs without the 4GB limitation of FAT32.
@@ -14,8 +14,8 @@ import subprocess
 import shutil
 import pathlib
 import tempfile
-import WoeUSB.utils as utils
-import WoeUSB.miscellaneous as miscellaneous
+import WowUSB.utils as utils
+import WowUSB.miscellaneous as miscellaneous
 from abc import ABC, abstractmethod
 
 _ = miscellaneous.i18n
@@ -206,7 +206,7 @@ class VhdVirtualDiskHandler(VirtualDiskHandler):
         # 4. Setting boot sectors
         
         # Create a temporary directory for mounting
-        temp_mount = tempfile.mkdtemp(prefix="WoeUSB.vhd.")
+        temp_mount = tempfile.mkdtemp(prefix="WowUSB.vhd.")
         
         try:
             # Mount the VHD
@@ -348,7 +348,7 @@ class Qcow2VirtualDiskHandler(VirtualDiskHandler):
         utils.print_with_color(_("Making QCOW2 bootable for Windows..."), "green")
         
         # Implementation similar to VHD
-        temp_mount = tempfile.mkdtemp(prefix="WoeUSB.qcow2.")
+        temp_mount = tempfile.mkdtemp(prefix="WowUSB.qcow2.")
         
         try:
             # Mount the QCOW2
@@ -563,7 +563,7 @@ class RawImgVirtualDiskHandler(VirtualDiskHandler):
         utils.print_with_color(_("Making RAW IMG bootable for Windows..."), "green")
         
         # Similar to the other implementations
-        temp_mount = tempfile.mkdtemp(prefix="WoeUSB.img.")
+        temp_mount = tempfile.mkdtemp(prefix="WowUSB.img.")
         
         try:
             # Mount the IMG

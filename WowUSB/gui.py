@@ -9,9 +9,9 @@ import threading
 import wx
 import wx.adv
 
-import WoeUSB.core as core
-import WoeUSB.list_devices as list_devices
-import WoeUSB.miscellaneous as miscellaneous
+import WowUSB.core as core
+import WowUSB.list_devices as list_devices
+import WowUSB.miscellaneous as miscellaneous
 
 data_directory = os.path.dirname(__file__) + "/data/"
 
@@ -271,7 +271,7 @@ class MainPanel(wx.Panel):
 
             filesystem = self.__parent.get_selected_filesystem()
 
-            woe = WoeUSB_handler(iso, device, boot_flag=self.__parent.options_boot.IsChecked(), filesystem=filesystem, skip_grub=self.__parent.options_skip_grub.IsChecked())
+            woe = WowUSB_handler(iso, device, boot_flag=self.__parent.options_boot.IsChecked(), filesystem=filesystem, skip_grub=self.__parent.options_skip_grub.IsChecked())
             woe.start()
 
             dialog = wx.ProgressDialog(_("Installing"), _("Please wait..."), 101, self.GetParent(),
@@ -327,7 +327,7 @@ class DialogAbout(wx.Dialog):
 
         sizer_text = wx.BoxSizer(wx.VERTICAL)
 
-        self.__staticTextTitre = wx.StaticText(self, wx.ID_ANY, "WoeUSB-ng")
+        self.__staticTextTitre = wx.StaticText(self, wx.ID_ANY, "WowUSB-DS9")
         self.__staticTextTitre.SetFont(wx.Font(16, 74, 90, 92, False, "Sans"))
         self.__staticTextTitre.SetForegroundColour(wx.Colour(0, 60, 118))
         sizer_text.Add(self.__staticTextTitre, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 5)
@@ -343,26 +343,26 @@ class DialogAbout(wx.Dialog):
 
         self.__NotebookAutorLicence.AddPage(
             PanelNoteBookAutors(self.__NotebookAutorLicence, wx.ID_ANY, "slacka \nLin-Buo-Ren\nWaxyMocha", data_directory + "woeusb-logo.png",
-                             "github.com/WoeUSB/WoeUSB-ng"), _("Authors"), True)
+                             "github.com/rebots-online/WowUSB"), _("Authors"), True)
         self.__NotebookAutorLicence.AddPage(
             PanelNoteBookAutors(self.__NotebookAutorLicence, wx.ID_ANY, "Colin GILLE / Congelli501",
                              data_directory + "c501-logo.png", "www.congelli.eu"), _("Original WinUSB Developer"), False)
 
         licence_str = _('''
-            This file is part of WoeUSB-ng.
+            This file is part of WowUSB-DS9.
 
-            WoeUSB-ng is free software: you can redistribute it and/or modify
+            WowUSB-DS9 is free software: you can redistribute it and/or modify
             it under the terms of the GNU General Public License as published by
             the Free Software Foundation, either version 3 of the License, or
             (at your option) any later version.
 
-            WoeUSB-ng is distributed in the hope that it will be useful,
+            WowUSB-DS9 is distributed in the hope that it will be useful,
             but WITHOUT ANY WARRANTY; without even the implied warranty of
             MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
             GNU General Public License for more details.
 
             You should have received a copy of the GNU General Public License
-            along with WoeUSB-ng.  If not, see <http://www.gnu.org/licenses/>.
+            along with WowUSB-DS9.  If not, see <http://www.gnu.org/licenses/>.
         ''')
 
         licence_txt = wx.TextCtrl(self.__NotebookAutorLicence, wx.ID_ANY, licence_str, wx.DefaultPosition,
@@ -402,7 +402,7 @@ class PanelNoteBookAutors(wx.Panel):
         self.SetSizer(sizer_note_book_autors)
 
 
-class WoeUSB_handler(threading.Thread):
+class WowUSB_handler(threading.Thread):
     """
     Class for handling communication with woeusb.
     """
@@ -438,7 +438,7 @@ class WoeUSB_handler(threading.Thread):
 
 
 def run():
-    frameTitle = "WoeUSB-ng"
+    frameTitle = "WowUSB-DS9"
 
     frame = MainFrame(frameTitle, wx.DefaultPosition, wx.Size(400, 600))
     frame.SetMinSize(wx.Size(300, 450))

@@ -2,8 +2,8 @@ import os
 import subprocess
 import time
 
-import WoeUSB.utils as utils
-import WoeUSB.miscellaneous as miscellaneous
+import WowUSB.utils as utils
+import WowUSB.miscellaneous as miscellaneous
 
 _ = miscellaneous.i18n
 

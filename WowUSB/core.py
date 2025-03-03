@@ -14,10 +14,10 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
-import WoeUSB.utils as utils
-import WoeUSB.workaround as workaround
-import WoeUSB.miscellaneous as miscellaneous
-import WoeUSB.filesystem_handlers as fs_handlers
+import WowUSB.utils as utils
+import WowUSB.workaround as workaround
+import WowUSB.miscellaneous as miscellaneous
+import WowUSB.filesystem_handlers as fs_handlers
 
 _ = miscellaneous.i18n
 

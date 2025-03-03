@@ -3,7 +3,7 @@
 # (C)2025 Robin L. M. Cheung, MBA
 
 """
-Filesystem handler modules for WoeUSB to support multiple filesystem types
+Filesystem handler modules for WowUSB to support multiple filesystem types
 including FAT32, NTFS, exFAT, F2FS, and BTRFS.
 
 This module provides a common interface for different filesystem operations
@@ -15,8 +15,8 @@ import subprocess
 import shutil
 import re
 from abc import ABC, abstractmethod
-import WoeUSB.utils as utils
-import WoeUSB.miscellaneous as miscellaneous
+import WowUSB.utils as utils
+import WowUSB.miscellaneous as miscellaneous
 
 _ = miscellaneous.i18n
 
