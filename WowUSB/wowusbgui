@@ -1,39 +1,458 @@
+
 #!/usr/bin/env python3
+# -*- coding: utf-8#
+# (C)2025 Robin L. M. Cheung, MBA
 
 """
-A Linux program to create bootable Windows USB stick from a real Windows DVD or an image
-Copyright © 2013 Colin GILLE / congelli501
-Copyright © 2017 slacka et. al.
-Python port - 2019 WaxyMocha
+WowUSB-DS9 Graphical User Interface
+A Linux program to create a Windows USB stick installer from a real Windows DVD or image.
+"""
 
-This file is part of WowUSB-DS9.
-
-WowUSB-DS9 is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-WowUSB-DS9 is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with WowUSB-DS9. If not, see <http://www.gnu.org/licenses/>.
-+"""
-
-import subprocess
 import sys
 import os
+import wx
+import wx.adv
+import logging
+import tempfile
+import shutil
+import signal
+import threading
+import time
 
-if os.getuid() != 0:
-    subprocess.run(["pkexec", os.path.realpath(__file__)])
-else:
-    try:
-        import WowUSB.gui
-        WowUSB.gui.run()
-    except SystemExit:
-        import WowUSB.utils
+# Add the parent directory to the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-        WowUSB.utils.update_policy_to_allow_for_running_gui_as_root(__file__)
-        print("Policy was updated, please run this program again")
+# Import WowUSB modules
+import WowUSB.core as core
+import WowUSB.utils as utils
+import WowUSB.list_devices as list_devices
+import WowUSB.miscellaneous as miscellaneous
+import WowUSB.filesystem_handlers as fs_handlers
+
+# Initialize internationalization
+_ = miscellaneous.i18n
+
+# Set up signal handler for graceful exit
+def signal_handler(sig, frame):
+    print("\nInterrupted by user. Cleaning up...")
+    # Clean up temporary files
+    for temp_dir in temp_dirs:
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+    sys.exit(1)
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+temp_dirs = []
+
+class MainFrame(wx.Frame):
+    """Main frame for the GUI"""
+    
+    def __init__(self, parent, title):
+        """Initialize the main frame"""
+        super(MainFrame, self).__init__(parent, title=title, size=(600, 500))
+        
+        # Set icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "icon.ico")
+        if os.path.exists(icon_path):
+            self.SetIcon(wx.Icon(icon_path))
+        
+        # Create the main panel
+        self.panel = MainPanel(self)
+        
+        # Create status bar
+        self.CreateStatusBar()
+        self.SetStatusText(_("Ready"))
+        
+        # Create menu bar
+        menubar = wx.MenuBar()
+        
+        # File menu
+        file_menu = wx.Menu()
+        about_item = file_menu.Append(wx.ID_ABOUT, _("&About"), _("About WowUSB-DS9"))
+        file_menu.AppendSeparator()
+        exit_item = file_menu.Append(wx.ID_EXIT, _("E&xit"), _("Exit the application"))
+        
+        # Add menus to menu bar
+        menubar.Append(file_menu, _("&File"))
+        self.SetMenuBar(menubar)
+        
+        # Bind events
+        self.Bind(wx.EVT_MENU, self.on_about, about_item)
+        self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
+        
+        # Center the frame
+        self.Centre()
+        
+        # Show the frame
+        self.Show(True)
+    
+    def on_about(self, event):
+        """Show about dialog"""
+        # Import here to avoid circular imports
+        import WowUSB
+        
+        info = wx.adv.AboutDialogInfo()
+        info.SetName("WowUSB-DS9")
+        info.SetVersion(WowUSB.__version__)
+        info.SetDescription(_("A Linux program to create a Windows USB stick installer from a real Windows DVD or image with advanced filesystem support and Windows-To-Go capability."))
+        info.SetCopyright("(C) 2025 Robin L. M. Cheung, MBA")
+        info.SetWebSite("https://github.com/rebots-online/WowUSB")
+        info.SetLicense("GPL-3.0")
+        info.AddDeveloper("Robin L. M. Cheung, MBA")
+        
+        wx.adv.AboutBox(info)
+    
+    def on_exit(self, event):
+        """Exit the application"""
+        self.Close()
+
+class MainPanel(wx.Panel):
+    """Main panel for the GUI"""
+    
+    def __init__(self, parent):
+        """Initialize the main panel"""
+        super(MainPanel, self).__init__(parent)
+        
+        # Create the main sizer
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        # Add the logo
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "logo.png")
+        if os.path.exists(logo_path):
+            logo = wx.Image(logo_path, wx.BITMAP_TYPE_PNG).Scale(200, 100, wx.IMAGE_QUALITY_HIGH).ConvertToBitmap()
+            logo_ctrl = wx.StaticBitmap(self, -1, logo)
+            main_sizer.Add(logo_ctrl, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+        
+        # Add the title
+        title = wx.StaticText(self, -1, "WowUSB-DS9")
+        title.SetFont(wx.Font(18, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
+        main_sizer.Add(title, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+        
+        # Add the description
+        description = wx.StaticText(self, -1, _("Create bootable WINDOWS USB drives with advanced features"))
+        main_sizer.Add(description, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        
+        # Create the source panel
+        source_panel = wx.Panel(self)
+        source_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        source_label = wx.StaticText(source_panel, -1, _("Source:"))
+        source_sizer.Add(source_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__source_option = wx.Choice(source_panel, -1, choices=[_("From a disk image (iso)"), _("From a DVD drive")])
+        self.__source_option.SetSelection(0)
+        source_sizer.Add(self.__source_option, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__source_text = wx.TextCtrl(source_panel, -1, "", style=wx.TE_READONLY)
+        source_sizer.Add(self.__source_text, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__source_button = wx.Button(source_panel, -1, _("Browse"))
+        source_sizer.Add(self.__source_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        source_panel.SetSizer(source_sizer)
+        main_sizer.Add(source_panel, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Create the target panel
+        target_panel = wx.Panel(self)
+        target_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        target_label = wx.StaticText(target_panel, -1, _("Target:"))
+        target_sizer.Add(target_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__target_choice = wx.Choice(target_panel, -1, choices=[])
+        target_sizer.Add(self.__target_choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__refresh_button = wx.Button(target_panel, -1, _("Refresh"))
+        target_sizer.Add(self.__refresh_button, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        target_panel.SetSizer(target_sizer)
+        main_sizer.Add(target_panel, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Create the filesystem panel
+        self.__fs_panel = wx.Panel(self)
+        fs_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        fs_label = wx.StaticText(self.__fs_panel, -1, _("Filesystem:"))
+        fs_sizer.Add(fs_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__filesystem_choice = wx.Choice(self.__fs_panel, -1, choices=[
+            _("FAT (Most compatible)"),
+            _("NTFS (Slower, supports >4GB files)"),
+            _("exFAT (Fast, supports >4GB files)"),
+            _("F2FS (Flash-friendly, supports >4GB files)"),
+            _("BTRFS (Advanced features, supports >4GB files)"),
+            _("AUTO (Automatic selection)")
+        ])
+        self.__filesystem_choice.SetSelection(5)  # Default to AUTO
+        fs_sizer.Add(self.__filesystem_choice, 1, wx.ALIGN_CENTER_VERTICAL | wx.ALL, 5)
+        
+        self.__fs_panel.SetSizer(fs_sizer)
+        main_sizer.Add(self.__fs_panel, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Create the options panel
+        options_panel = wx.Panel(self)
+        options_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        self.__wintogo_checkbox = wx.CheckBox(options_panel, -1, _("Create Windows-To-Go installation (portable Windows)"))
+        options_sizer.Add(self.__wintogo_checkbox, 0, wx.ALL, 5)
+        
+        options_panel.SetSizer(options_sizer)
+        main_sizer.Add(options_panel, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Create the progress panel
+        progress_panel = wx.Panel(self)
+        progress_sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        self.__progress_text = wx.StaticText(progress_panel, -1, _("Ready"))
+        progress_sizer.Add(self.__progress_text, 0, wx.ALL, 5)
+        
+        self.__progress_bar = wx.Gauge(progress_panel, -1, 100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        progress_sizer.Add(self.__progress_bar, 0, wx.EXPAND | wx.ALL, 5)
+        
+        progress_panel.SetSizer(progress_sizer)
+        main_sizer.Add(progress_panel, 0, wx.EXPAND | wx.ALL, 10)
+        
+        # Create the button panel
+        button_panel = wx.Panel(self)
+        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        self.__install_button = wx.Button(button_panel, -1, _("Install"))
+        button_sizer.Add(self.__install_button, 0, wx.ALL, 5)
+        
+        self.__cancel_button = wx.Button(button_panel, -1, _("Cancel"))
+        self.__cancel_button.Disable()
+        button_sizer.Add(self.__cancel_button, 0, wx.ALL, 5)
+        
+        button_panel.SetSizer(button_sizer)
+        main_sizer.Add(button_panel, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+        
+        # Set the main sizer
+        self.SetSizer(main_sizer)
+        
+        # Bind events
+        self.__source_option.Bind(wx.EVT_CHOICE, self.on_source_option_changed)
+        self.__source_button.Bind(wx.EVT_BUTTON, self.on_source_button)
+        self.__refresh_button.Bind(wx.EVT_BUTTON, self.on_refresh_button)
+        self.__install_button.Bind(wx.EVT_BUTTON, self.on_install)
+        self.__cancel_button.Bind(wx.EVT_BUTTON, self.on_cancel)
+        
+        # Initialize the UI
+        self.on_source_option_changed(None)
+        self.refresh_devices()
+    
+    def on_source_option_changed(self, event):
+        """Handle source option changed event"""
+        if self.__source_option.GetSelection() == 0:
+            # From a disk image
+            self.__source_button.Enable()
+            self.__source_text.SetValue("")
+        else:
+            # From a DVD drive
+            self.__source_button.Disable()
+            self.__source_text.SetValue(_("DVD drive will be detected automatically"))
+    
+    def on_source_button(self, event):
+        """Handle source button click event"""
+        if self.__source_option.GetSelection() == 0:
+            # From a disk image
+            with wx.FileDialog(self, _("Select Windows ISO"), wildcard="ISO files (*.iso)|*.iso|All files (*.*)|*.*",
+                              style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as file_dialog:
+                if file_dialog.ShowModal() == wx.ID_CANCEL:
+                    return
+                self.__source_text.SetValue(file_dialog.GetPath())
+    
+    def on_refresh_button(self, event):
+        """Handle refresh button click event"""
+        self.refresh_devices()
+    
+    def refresh_devices(self):
+        """Refresh the list of devices"""
+        self.__target_choice.Clear()
+        
+        # Get the list of devices
+        devices = list_devices.get_device_list()
+        
+        # Add devices to the choice control
+        for device in devices:
+            self.__target_choice.Append(f"{device['device']} - {device['size']} - {device['model']}")
+        
+        # Select the first device if available
+        if self.__target_choice.GetCount() > 0:
+            self.__target_choice.SetSelection(0)
+    
+    def on_install(self, event):
+        """Handle install button click event"""
+        # Check if source is selected
+        if self.__source_option.GetSelection() == 0 and not self.__source_text.GetValue():
+            wx.MessageBox(_("Please select a source ISO file"), _("Error"), wx.OK | wx.ICON_ERROR)
+            return
+        
+        # Check if target is selected
+        if self.__target_choice.GetCount() == 0 or self.__target_choice.GetSelection() == -1:
+            wx.MessageBox(_("Please select a target device"), _("Error"), wx.OK | wx.ICON_ERROR)
+            return
+        
+        # Get the selected device
+        device_str = self.__target_choice.GetString(self.__target_choice.GetSelection())
+        device = device_str.split(" - ")[0]
+        
+        # Confirm installation
+        if wx.MessageBox(_("WARNING: All data on the selected device will be lost!\n\nAre you sure you want to continue?"),
+                        _("Confirm"), wx.YES_NO | wx.ICON_WARNING) != wx.YES:
+            return
+        
+        # Disable UI elements
+        self.__source_option.Disable()
+        self.__source_button.Disable()
+        self.__target_choice.Disable()
+        self.__refresh_button.Disable()
+        self.__filesystem_choice.Disable()
+        self.__wintogo_checkbox.Disable()
+        self.__install_button.Disable()
+        self.__cancel_button.Enable()
+        
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp(prefix="WowUSB.")
+        temp_dirs.append(temp_dir)
+        
+        # Create arguments for core.main
+        args = type('Args', (), {})()
+        args.source = self.__source_text.GetValue() if self.__source_option.GetSelection() == 0 else None
+        args.target = device
+        args.target_partition = device + "1"
+        args.target_filesystem = self.get_selected_filesystem()
+        args.verbose = True
+        args.install_mode = "device"
+        args.no_color = True
+        args.for_gui = True
+        args.wintogo = self.__wintogo_checkbox.IsChecked()
+        
+        # Start the installation thread
+        self.__installation_thread = threading.Thread(target=self.installation_thread, args=(args, temp_dir))
+        self.__installation_thread.daemon = True
+        self.__installation_thread.start()
+        
+        # Start the progress update timer
+        self.__progress_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_progress_timer, self.__progress_timer)
+        self.__progress_timer.Start(100)
+    
+    def get_selected_filesystem(self):
+        """Get the filesystem type selected by the user"""
+        selection = self.__filesystem_choice.GetSelection()
+        if selection == 0:
+            return "FAT"
+        elif selection == 1:
+            return "NTFS"
+        elif selection == 2:
+            return "EXFAT"
+        elif selection == 3:
+            return "F2FS"
+        elif selection == 4:
+            return "BTRFS"
+        else:
+            return "AUTO"
+    
+    def installation_thread(self, args, temp_dir):
+        """Installation thread function"""
+        try:
+            # Redirect stdout and stderr to capture progress
+            utils.progress_text = ""
+            utils.progress_percentage = 0
+            
+            # Run the installation
+            result = core.main(args, temp_dir)
+            
+            # Update progress
+            if result == 0:
+                utils.progress_text = _("Installation completed successfully")
+                utils.progress_percentage = 100
+            else:
+                utils.progress_text = _("Installation failed")
+                utils.progress_percentage = 0
+            
+            # Clean up temporary files
+            if os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
+            
+            # Enable UI elements
+            wx.CallAfter(self.enable_ui)
+            
+        except Exception as e:
+            # Update progress
+            utils.progress_text = _("Error: {}").format(str(e))
+            utils.progress_percentage = 0
+            
+            # Enable UI elements
+            wx.CallAfter(self.enable_ui)
+    
+    def on_progress_timer(self, event):
+        """Handle progress timer event"""
+        # Update progress text and bar
+        self.__progress_text.SetLabel(utils.progress_text)
+        self.__progress_bar.SetValue(utils.progress_percentage)
+        
+        # Check if installation is complete
+        if utils.progress_percentage == 100:
+            self.__progress_timer.Stop()
+            wx.MessageBox(_("Installation completed successfully"), _("Success"), wx.OK | wx.ICON_INFORMATION)
+            self.enable_ui()
+        elif utils.progress_text.startswith(_("Error")):
+            self.__progress_timer.Stop()
+            wx.MessageBox(utils.progress_text, _("Error"), wx.OK | wx.ICON_ERROR)
+            self.enable_ui()
+    
+    def enable_ui(self):
+        """Enable UI elements"""
+        self.__source_option.Enable()
+        self.__source_button.Enable() if self.__source_option.GetSelection() == 0 else self.__source_button.Disable()
+        self.__target_choice.Enable()
+        self.__refresh_button.Enable()
+        self.__filesystem_choice.Enable()
+        self.__wintogo_checkbox.Enable()
+        self.__install_button.Enable()
+        self.__cancel_button.Disable()
+    
+    def on_cancel(self, event):
+        """Handle cancel button click event"""
+        # Stop the installation thread
+        if hasattr(self, '__installation_thread') and self.__installation_thread.is_alive():
+            # Set a flag to cancel the installation
+            utils.cancel_operation = True
+            
+            # Update progress
+            utils.progress_text = _("Cancelling...")
+            utils.progress_percentage = 0
+            
+            # Wait for the thread to finish
+            self.__installation_thread.join(1.0)
+            
+            # Enable UI elements
+            self.enable_ui()
+            
+            # Stop the progress timer
+            if hasattr(self, '__progress_timer'):
+                self.__progress_timer.Stop()
+
+def main():
+    """Main entry point for the GUI"""
+    # Create the application
+    app = wx.App(False)
+    
+    # Create the main frame
+    frame = MainFrame(None, "WowUSB-DS9")
+    
+    # Start the main loop
+    app.MainLoop()
+
+if __name__ == "__main__":
+    # Import here to avoid circular imports
+    import WowUSB
+    main()

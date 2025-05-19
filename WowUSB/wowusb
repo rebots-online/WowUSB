@@ -1,6 +1,98 @@
+
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# (C)2025 Robin L. M. Cheung, MBA
 
 """
+WowUSB-DS9 Command Line Interface
+A Linux program to create a Windows USB stick installer from a real Windows DVD or image.
+"""
+
+import sys
+import os
+import argparse
+import logging
+import tempfile
+import shutil
+import signal
+import time
+
+# Add the parent directory to the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import WowUSB modules
+import WowUSB.core as core
+import WowUSB.utils as utils
+import WowUSB.list_devices as list_devices
+import WowUSB.miscellaneous as miscellaneous
+
+# Initialize internationalization
+_ = miscellaneous.i18n
+
+# Set up signal handler for graceful exit
+def signal_handler(sig, frame):
+    print("\nInterrupted by user. Cleaning up...")
+    # Clean up temporary files
+    for temp_dir in temp_dirs:
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+    sys.exit(1)
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+temp_dirs = []
+
+def main():
+    """Main entry point for the command line interface"""
+    # Parse command line arguments
+    args = core.setup_arguments()
+    
+    # Configure logging
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=log_level, format='%(levelname)s: %(message)s')
+    
+    # Print banner
+    if not args.no_color:
+        print("\033[1;34m")  # Blue text
+    print("WowUSB-DS9 v{}".format(WowUSB.__version__))
+    print("A Linux program to create a Windows USB stick installer from a real Windows DVD or image.")
+    print("Copyright (C) 2025 Robin L. M. Cheung, MBA")
+    if not args.no_color:
+        print("\033[0m")  # Reset text color
+    
+    # List devices if requested
+    if args.list_devices:
+        list_devices.list_devices()
+        return 0
+    
+    # Create a temporary directory
+    temp_dir = tempfile.mkdtemp(prefix="WowUSB.")
+    temp_dirs.append(temp_dir)
+    
+    # Run the core functionality
+    try:
+        return core.main(args, temp_dir)
+    except KeyboardInterrupt:
+        print("\nInterrupted by user. Cleaning up...")
+        return 1
+    except Exception as e:
+        print("Error: {}".format(str(e)))
+        return 1
+    finally:
+        # Clean up temporary files
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
+
+if __name__ == "__main__":
+    # Import here to avoid circular imports
+    import WowUSB
+    sys.exit(main())
 A Linux program to create bootable Windows USB stick from a real Windows DVD or an image
 Copyright © 2013 Colin GILLE / congelli501
 Copyright © 2017 slacka et. al.

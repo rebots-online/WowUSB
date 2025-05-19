@@ -1,5 +1,34 @@
 graft WoeUSB/data
 graft WoeUSB/locale
 graft miscellaneous
+# Include all necessary files in the source distribution
 include README.md
+include COPYING
+include CHANGELOG.md
+include TECHNICAL_DESIGN.md
+include PRODUCTION_BUILD.md
+include setup.py
+include setup.cfg
+
+# Include miscellaneous files
+include miscellaneous/com.rebots.wowusb.ds9.policy
+include miscellaneous/WowUSB-DS9.desktop
+
+# Include all data files
+recursive-include WowUSB/data *
+recursive-include WowUSB/locale *
+
+# Include bootloader files
+recursive-include WowUSB/data/bootloaders *
+recursive-include WowUSB/data/drivers *
+recursive-include WowUSB/data/scripts *
+
+# Include test files
+recursive-include tests *
+
+# Exclude compiled Python files
+global-exclude *.py[cod]
+global-exclude __pycache__
+global-exclude *.so
+global-exclude .DS_Store
 include WoeUSB/woeusbgui

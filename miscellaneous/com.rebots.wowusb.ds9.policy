@@ -25,4 +25,29 @@ DOC: https://www.freedesktop.org/software/polkit/docs/latest/polkit.8.html
 		<annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/wowusbgui</annotate>
    		<annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
 	</action>
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <action id="com.rebots.wowusb.ds9.run">
+    <description>Run WowUSB-DS9</description>
+    <message>Authentication is required to run WowUSB-DS9</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/local/bin/wowusb</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+  
+  <action id="com.rebots.wowusb.ds9.format">
+    <description>Format USB drive with WowUSB-DS9</description>
+    <message>Authentication is required to format USB drives</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
 </policyconfig>
+

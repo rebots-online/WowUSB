@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # (C)2025 Robin L. M. Cheung, MBA
@@ -145,6 +146,64 @@ def check_fat32_filesize_limitation(source_fs_mountpoint):
                 
     return 0
 
+
+def check_fat32_filesize_limitation(source_path):
+    """
+    Check if there are files larger than 4GB in the source path
+
+    Args:
+        source_path (str): Path to check
+
+    Returns:
+        bool: True if there are files larger than 4GB, False otherwise
+    """
+    for dirpath, dirnames, filenames in os.walk(source_path):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            try:
+                if os.path.getsize(file_path) > 4 * 1024 * 1024 * 1024:  # 4GB
+                    return True
+            except (OSError, IOError):
+                pass
+    return False
+
+
+def check_fat32_filesize_limitation_detailed(source_path):
+    """
+    Check if there are files larger than 4GB in the source path and return details
+
+    Args:
+        source_path (str): Path to check
+
+    Returns:
+        tuple: (has_large_files, largest_file, largest_size)
+            has_large_files (bool): True if there are files larger than 4GB
+            largest_file (str): Path to the largest file (relative to source_path)
+            largest_size (int): Size of the largest file in bytes
+    """
+    has_large_files = False
+    largest_file = ""
+    largest_size = 0
+
+    for dirpath, dirnames, filenames in os.walk(source_path):
+        for filename in filenames:
+            file_path = os.path.join(dirpath, filename)
+            try:
+                file_size = os.path.getsize(file_path)
+
+                # Track the largest file
+                if file_size > largest_size:
+                    largest_size = file_size
+                    largest_file = os.path.relpath(file_path, source_path)
+
+                # Check if larger than 4GB
+                if file_size > 4 * 1024 * 1024 * 1024:  # 4GB
+                    has_large_files = True
+            except (OSError, IOError):
+                pass
+
+    return (has_large_files, largest_file, largest_size)
+    
 
 def check_runtime_parameters(install_mode, source_media, target_media):
     """
@@ -356,7 +415,6 @@ def check_kill_signal():
         if gui.kill:
             raise sys.exit()
 
-
 # noinspection DuplicatedCode
 def update_policy_to_allow_for_running_gui_as_root(path):
     dom = parseString(
@@ -415,3 +473,86 @@ def update_policy_to_allow_for_running_gui_as_root(path):
 
     with open("/usr/share/polkit-1/actions/com.github.woeusb.woeusb-ng.policy", "w") as file:
         file.write(dom.toxml())
+
+
+def detect_windows_version(source_fs_mountpoint):
+    """
+    Detect Windows version from installation media
+    
+    Args:
+        source_fs_mountpoint (str): Path to mounted Windows installation media
+        
+    Returns:
+        tuple: (version, build_number, is_windows11)
+            version (str): Windows version (e.g., "10", "11")
+            build_number (str): Windows build number
+            is_windows11 (bool): True if Windows 11, False otherwise
+    """
+    # Default values
+    version = "unknown"
+    build_number = "unknown"
+    is_windows11 = False
+    
+    # Check for Windows 11 specific files
+    win11_indicators = [
+        os.path.join(source_fs_mountpoint, "sources", "appraiserres.dll"),
+        os.path.join(source_fs_mountpoint, "sources", "compatresources.dll")
+    ]
+    
+    for indicator in win11_indicators:
+        if os.path.exists(indicator):
+            is_windows11 = True
+            version = "11"
+            break
+    
+    # Try to get version from setup files
+    setup_dll = os.path.join(source_fs_mountpoint, "sources", "setupprep.exe")
+    if os.path.exists(setup_dll):
+        try:
+            # Extract version information using strings command
+            result = subprocess.run(
+                ["strings", setup_dll], 
+                capture_output=True, 
+                text=True
+            )
+            
+            # Look for version patterns
+            version_match = re.search(r'(Windows\s+(\d+))', result.stdout)
+            build_match = re.search(r'(\d{5}\.\d+)', result.stdout)
+            
+            if version_match and not is_windows11:
+                version = version_match.group(2)
+            
+            if build_match:
+                build_number = build_match.group(1)
+                
+                # Windows 11 builds are typically 22000 or higher
+                if int(build_number.split('.')[0]) >= 22000:
+                    is_windows11 = True
+                    version = "11"
+        except (subprocess.SubprocessError, OSError, ValueError):
+            pass
+    
+    # Check cversion.ini for older Windows versions
+    cversion_path = os.path.join(source_fs_mountpoint, "sources", "cversion.ini")
+    if os.path.exists(cversion_path):
+        try:
+            with open(cversion_path, 'r') as f:
+                content = f.read()
+                
+                # Look for version information
+                if "MinClient=7" in content:
+                    version = "7"
+                elif "MinClient=8" in content:
+                    version = "8"
+                elif "MinClient=10" in content:
+                    version = "10"
+                
+                # Look for build number
+                build_match = re.search(r'BuildNumber=(\d+)', content)
+                if build_match:
+                    build_number = build_match.group(1)
+        except (IOError, OSError):
+            pass
+    
+    return (version, build_number, is_windows11)

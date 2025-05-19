@@ -1,0 +1,10 @@
+wowusb-ds9 (0.3.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging
+  * Added support for exFAT, F2FS, and BTRFS filesystems
+  * Added Windows-To-Go support
+  * Integrated UEFI:NTFS bootloader
+  * Improved large file handling (>4GB)
+  * Enhanced filesystem detection and selection
+
+ -- Robin L. M. Cheung, MBA <robin@robincheung.com>  Mon, 19 May 2025 00:00:00 +0000

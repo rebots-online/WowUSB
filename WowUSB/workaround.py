@@ -1,3 +1,4 @@
+
 import os
 import subprocess
 import time
@@ -6,7 +7,6 @@ import WowUSB.utils as utils
 import WowUSB.miscellaneous as miscellaneous
 
 _ = miscellaneous.i18n
-
 
 def make_system_realize_partition_table_changed(target_device):
     """
@@ -52,9 +52,11 @@ def support_windows_7_uefi_boot(source_fs_mountpoint, target_fs_mountpoint):
     :param target_fs_mountpoint:
     :return:
     """
-    grep = subprocess.run(["grep", "--extended-regexp", "--quiet", "^MinServer=7[0-9]{3}\.[0-9]",
+
+    grep = subprocess.run(["grep", "--extended-regexp", "--quiet", r"^MinServer=7[0-9]{3}\\.[0-9]",
                            source_fs_mountpoint + "/sources/cversion.ini"],
                           stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
+    
     if grep == "" and not os.path.isfile(source_fs_mountpoint + "/bootmgr.efi"):
         return 0
 
@@ -76,6 +78,122 @@ def support_windows_7_uefi_boot(source_fs_mountpoint, target_fs_mountpoint):
 
     test_efi_boot_directory = subprocess.run(["find", target_fs_mountpoint, "-ipath", target_fs_mountpoint + "/boot"],
                                              stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
+
+
+def bypass_windows11_tpm_requirement(target_fs_mountpoint):
+    """
+    Bypass Windows 11 TPM, Secure Boot, and RAM requirements for Windows-To-Go
+
+    This function creates registry modifications that disable TPM, Secure Boot,
+    and RAM checks during Windows 11 setup and boot.
+
+    :param target_fs_mountpoint: Target filesystem mountpoint
+    :return: 0 - success; 1 - failure
+    """
+    utils.print_with_color(
+        _("Applying Windows 11 TPM, Secure Boot, and RAM requirement bypass for Windows-To-Go..."),
+        "green"
+    )
+
+    # Create registry files directory if it doesn't exist
+    registry_dir = os.path.join(target_fs_mountpoint, "Windows", "System32", "config")
+    os.makedirs(registry_dir, exist_ok=True)
+
+    # Create registry bypass file
+    bypass_reg_path = os.path.join(target_fs_mountpoint, "bypass_requirements.reg")
+
+    with open(bypass_reg_path, "w") as reg_file:
+        reg_file.write("""Windows Registry Editor Version 5.00
+
+; Bypass TPM 2.0 requirement
+[HKEY_LOCAL_MACHINE\\SYSTEM\\Setup\\LabConfig]
+"BypassTPMCheck"=dword:00000001
+"BypassSecureBootCheck"=dword:00000001
+"BypassRAMCheck"=dword:00000001
+
+; Disable TPM check for Windows Update
+[HKEY_LOCAL_MACHINE\\SYSTEM\\Setup\\MoSetup]
+"AllowUpgradesWithUnsupportedTPMOrCPU"=dword:00000001
+
+; Disable Secure Boot and TPM for Windows 11
+[HKEY_LOCAL_MACHINE\\SYSTEM\\Setup\\Upgrade\\NSI\\{17AB7DB5-26E2-4542-B68E-F5D172C7CE2A}]
+"UpgradeEligibility"=dword:00000001
+""")
+
+    # Create setup completion script to apply registry modifications
+    setup_script_path = os.path.join(target_fs_mountpoint, "Windows", "Setup", "Scripts")
+    os.makedirs(setup_script_path, exist_ok=True)
+
+    with open(os.path.join(setup_script_path, "SetupComplete.cmd"), "w") as script_file:
+        script_file.write("""@echo off
+reg import %SystemDrive%\\bypass_requirements.reg
+""")
+
+    utils.print_with_color(_("Windows 11 requirement bypass applied successfully"), "green")
+    return 0
+
+
+def prepare_windows_portable_drivers(target_fs_mountpoint):
+    """
+    Prepare Windows for portable operation by configuring drivers and hardware detection
+
+    This function creates registry modifications that improve hardware compatibility
+    when booting on different computers.
+
+    :param target_fs_mountpoint: Target filesystem mountpoint
+    :return: 0 - success; 1 - failure
+    """
+    utils.print_with_color(_("Configuring Windows for portable operation..."), "green")
+
+    # Create registry file for portable operation
+    portable_reg_path = os.path.join(target_fs_mountpoint, "portable_config.reg")
+
+    with open(portable_reg_path, "w") as reg_file:
+        reg_file.write("""Windows Registry Editor Version 5.00
+
+; Enable driver database for multiple hardware profiles
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\PnP]
+"DisableCrossSessionDriverLoad"=dword:00000000
+
+; Enable all storage controllers
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\storahci]
+"Start"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\stornvme]
+"Start"=dword:00000000
+
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\storport]
+"Start"=dword:00000000
+
+; Disable fast startup (causes issues with hardware changes)
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power]
+"HiberbootEnabled"=dword:00000000
+
+; Configure boot options for better hardware compatibility
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management]
+"DisablePagingExecutive"=dword:00000001
+
+; Enable all network adapters
+[HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters]
+"DisableDynamicUpdate"=dword:00000000
+""")
+
+    # Update setup completion script to apply portable configuration
+    setup_script_path = os.path.join(target_fs_mountpoint, "Windows", "Setup", "Scripts", "SetupComplete.cmd")
+
+    with open(setup_script_path, "a") as script_file:
+        script_file.write("""
+reg import %SystemDrive%\\portable_config.reg
+
+rem Enable all network adapters
+powershell -Command "Get-NetAdapter | Enable-NetAdapter -Confirm:$false"
+
+rem Optimize for portable operation
+powershell -Command "Set-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Power' -Name 'HibernateEnabled' -Value 0"
+""")
+
+    utils.print_with_color(_("Portable Windows configuration applied successfully"), "green")
+    return 0
 
     if test_efi_boot_directory == "":
         efi_boot_directory = target_fs_mountpoint + "/boot"
@@ -105,3 +223,4 @@ def support_windows_7_uefi_boot(source_fs_mountpoint, target_fs_mountpoint):
 
     with open(efi_boot_directory + "/bootx64.efi", "wb") as target_bootloader:
         target_bootloader.write(bootloader)
+

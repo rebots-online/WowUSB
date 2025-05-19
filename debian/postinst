@@ -1,0 +1,40 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Update desktop database
+        if [ -x "$(command -v update-desktop-database)" ]; then
+            update-desktop-database -q
+        fi
+        
+        # Update icon cache
+        if [ -x "$(command -v gtk-update-icon-cache)" ]; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor
+        fi
+        
+        # Set executable permissions for GUI launcher
+        if [ -f /usr/bin/wowusbgui ]; then
+            chmod +x /usr/bin/wowusbgui
+        fi
+        
+        # Reload polkit configuration
+        if [ -x "$(command -v pkaction)" ]; then
+            if systemctl is-active --quiet polkit.service; then
+                systemctl restart polkit.service || true
+            fi
+        fi
+        ;;
+        
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+        
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

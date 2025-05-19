@@ -1,0 +1,46 @@
+Source: wowusb-ds9
+Section: utils
+Priority: optional
+Maintainer: Robin L. M. Cheung, MBA <robin@robincheung.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-all,
+               python3-setuptools,
+               python3-pip,
+               python3-wxgtk4.0,
+               python3-termcolor
+Standards-Version: 4.5.1
+Homepage: https://github.com/rebots-online/WowUSB
+Vcs-Browser: https://github.com/rebots-online/WowUSB
+Vcs-Git: https://github.com/rebots-online/WowUSB.git
+Rules-Requires-Root: no
+
+Package: wowusb-ds9
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3-wxgtk4.0,
+         python3-termcolor,
+         grub2-common,
+         grub-pc-bin,
+         parted,
+         dosfstools,
+         ntfs-3g,
+         exfat-utils | exfatprogs,
+         f2fs-tools,
+         btrfs-progs,
+         p7zip-full
+Recommends: polkit
+Suggests: gparted
+Description: Create bootable Windows USB drives with advanced features
+ WowUSB-DS9 is a Linux utility that enables you to create your own bootable
+ Windows installation USB storage device from an existing Windows Installation
+ disc or disk image.
+ .
+ Features:
+  * Support for Windows Vista, 7, 8.x, 10, and 11
+  * Support for multiple filesystems (FAT32, NTFS, exFAT, F2FS, BTRFS)
+  * Automatic filesystem selection based on ISO content
+  * Support for files larger than 4GB
+  * Windows-To-Go support for portable Windows installations
+  * Both command-line and graphical interfaces

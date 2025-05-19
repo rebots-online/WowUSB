@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # (C)2025 Robin L. M. Cheung, MBA
@@ -26,8 +27,8 @@ application_version = miscellaneous.__version__
 DEFAULT_NEW_FS_LABEL = 'Windows USB'
 
 application_site_url = 'https://github.com/robinmc/WowUSB-DS9'
-application_copyright_declaration = "(C)2025 Robin L. M. Cheung, MBA"
-application_copyright_notice = application_name + " is free software licensed under the GNU General Public License version 3(or any later version of your preference) that gives you THE 4 ESSENTIAL FREEDOMS\nhttps://www.gnu.org/philosophy/"
+applicationopyright_declaration = "(C)2025 Robin L. M. Cheung, MBA"
+applicationopyright_notice = application_name + " is free software licensed under the GNU General Public License version 3(or any later version of your preference) that gives you THE 4 ESSENTIAL FREEDOMS\nhttps://www.gnu.org/philosophy/"
 
 #: Increase verboseness, provide more information when required
 verbose = False
@@ -106,6 +107,9 @@ def init(from_cli=True, install_mode=None, source_media=None, target_media=None,
 
         debug = args.debug
 
+        #: Add Windows-To-Go argument presence
+        setattr(parser, 'wintogo', getattr(args, 'wintogo', False))
+
     utils.no_color = no_color
     utils.verbose = verbose
     utils.gui = gui
@@ -181,20 +185,26 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
         fs_handler = fs_handlers.get_filesystem_handler(target_filesystem_type)
         if not fs_handler.supports_file_size_greater_than_4gb():
             # Check if there are files larger than 4GB
+            has_large_files, largest_file, largest_size = utils.check_fat32_filesize_limitation_detailed(source_fs_mountpoint)
+            if has_large_files:
+                utils.print_with_color(
+                    _("Warning: Source contains files larger than 4GB. Largest: {0} ({1})").format(
+                        largest_file, 
+                        utils.convert_to_human_readable_format(largest_size)
+                    ),
+                    "yellow"
+                )
+                
             if utils.check_fat32_filesize_limitation(source_fs_mountpoint):
                 # Try to find a better filesystem
                 available_fs = fs_handlers.get_available_filesystem_handlers()
                 alternative_fs = None
                 
                 # Prefer exFAT if available, then NTFS, then others
-                if "EXFAT" in available_fs:
-                    alternative_fs = "EXFAT"
-                elif "NTFS" in available_fs:
-                    alternative_fs = "NTFS"
-                elif "F2FS" in available_fs:
-                    alternative_fs = "F2FS"
-                elif "BTRFS" in available_fs:
-                    alternative_fs = "BTRFS"
+                for fs_type in ["EXFAT", "NTFS", "F2FS", "BTRFS"]:
+                    if fs_type in available_fs:
+                        alternative_fs = fs_type
+                        break
                 
                 if alternative_fs:
                     utils.print_with_color(
@@ -224,11 +234,43 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
                 "red"
             )
             return 1
+            
+        # Print selected filesystem information
+        utils.print_with_color(
+            _("Using {0} filesystem for Windows installation").format(fs_handler.name()),
+            "green"
+        )
+        if fs_handler.supports_file_size_greater_than_4gb():
+            utils.print_with_color(_("Large file support (>4GB) is enabled"), "green")
+        
+        # Print UEFI support information
+        if fs_handler.needs_uefi_support_partition():
+            utils.print_with_color(
+                _("Note: {0} requires a separate UEFI support partition for UEFI booting").format(fs_handler.name()),
+                "green" if utils.verbose else None
+            )
     except ValueError as e:
         utils.print_with_color(str(e), "red")
         return 1
 
-    if install_mode == "device":
+    # Check if Windows-To-Go mode is enabled
+    is_wintogo_mode = getattr(parser, 'wintogo', False) if parser else False
+    
+    if is_wintogo_mode:
+        utils.print_with_color(_("Windows-To-Go mode enabled"), "green")
+        
+        if install_mode != "device":
+            utils.print_with_color(_("Error: Windows-To-Go requires --device mode"), "red")
+            return 1
+            
+        # Create Windows-To-Go specific partition layout
+        if create_wintogo_partition_layout(target_device, target_filesystem_type, filesystem_label):
+            utils.print_with_color(_("Error: Failed to create Windows-To-Go partition layout"), "red")
+            return 1
+            
+        # Update target partition to point to the Windows partition (3rd partition)
+        target_partition = target_device + "3"
+    elif install_mode == "device":
         wipe_existing_partition_table_and_filesystem_signatures(target_device)
         create_target_partition_table(target_device, "legacy")
         create_target_partition(target_device, target_partition, target_filesystem_type, filesystem_label)
@@ -253,6 +295,86 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
 
     copy_filesystem_files(source_fs_mountpoint, target_fs_mountpoint)
 
+    # Set up persistence for Linux distributions if requested
+    if parser and getattr(parser, 'persistence', None) is not None:
+        if setup_linux_persistence(target_device, target_partition,
+                                   target_filesystem_type, parser.persistence) != 0:
+            utils.print_with_color(_("Error: Failed to set up persistence"), "red")
+            return 1
+
+    # Apply Windows-To-Go specific modifications if in Windows-To-Go mode
+    if is_wintogo_mode:
+        # Detect Windows version
+        windows_version, build_number, is_windows11 = utils.detect_windows_version(source_fs_mountpoint)
+        utils.print_with_color(
+            _("Detected Windows version: {0}, build: {1}").format(windows_version, build_number),
+            "green"
+        )
+        
+        # Apply TPM bypass for Windows 11
+        if is_windows11:
+            utils.print_with_color(_("Applying Windows 11 specific modifications..."), "green")
+            workaround.bypass_windows11_tpm_requirement(target_fs_mountpoint)
+        
+        # Configure drivers and hardware detection for portable Windows
+        workaround.prepare_windows_portable_drivers(target_fs_mountpoint)
+        
+        # Mount ESP partition for bootloader installation
+        esp_partition = target_device + "1"
+        esp_mountpoint = target_fs_mountpoint + "_esp"
+        
+        os.makedirs(esp_mountpoint, exist_ok=True)
+        
+        if subprocess.run(["mount", esp_partition, esp_mountpoint]).returncode != 0:
+            utils.print_with_color(_("Error: Unable to mount ESP partition"), "red")
+            return 1
+        
+        # Copy bootloader files to ESP
+        utils.print_with_color(_("Installing bootloader files to ESP..."), "green")
+        
+        # Create directory structure
+        os.makedirs(os.path.join(esp_mountpoint, "EFI", "Boot"), exist_ok=True)
+        
+        # Copy bootloader files from Windows partition
+        boot_files = [
+            ("bootmgfw.efi", "bootx64.efi"),
+            ("bootmgr.efi", "bootmgr.efi")
+        ]
+        
+        for src_name, dest_name in boot_files:
+            src_path = os.path.join(target_fs_mountpoint, "Windows", "Boot", "EFI", src_name)
+            dest_path = os.path.join(esp_mountpoint, "EFI", "Boot", dest_name)
+            
+            if os.path.exists(src_path):
+                shutil.copy2(src_path, dest_path)
+            else:
+                utils.print_with_color(
+                    _("Warning: Bootloader file {0} not found").format(src_path),
+                    "yellow"
+                )
+        
+        # Create BCD store for Windows boot
+        utils.print_with_color(_("Creating BCD store for Windows boot..."), "green")
+        
+        bcd_dir = os.path.join(esp_mountpoint, "EFI", "Microsoft", "Boot")
+        os.makedirs(bcd_dir, exist_ok=True)
+        
+        # Copy BCD from Windows partition if available
+        src_bcd = os.path.join(target_fs_mountpoint, "Boot", "BCD")
+        dest_bcd = os.path.join(bcd_dir, "BCD")
+        
+        if os.path.exists(src_bcd):
+            shutil.copy2(src_bcd, dest_bcd)
+        
+        # Unmount ESP partition
+        if subprocess.run(["umount", esp_mountpoint]).returncode != 0:
+            utils.print_with_color(_("Warning: Unable to unmount ESP partition"), "yellow")
+        
+        try:
+            os.rmdir(esp_mountpoint)
+        except OSError:
+            pass
+
     workaround.support_windows_7_uefi_boot(source_fs_mountpoint, target_fs_mountpoint)
     if not skip_legacy_bootloader:
         install_legacy_pc_bootloader_grub(target_fs_mountpoint, target_device, command_grubinstall)
@@ -264,188 +386,6 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
     current_state = "finished"
 
     return 0
-
-
-def print_application_info():
-    utils.print_with_color(application_name + " " + application_version)
-    utils.print_with_color(application_site_url)
-    utils.print_with_color(application_copyright_declaration)
-    utils.print_with_color(application_copyright_notice)
-
-
-def wipe_existing_partition_table_and_filesystem_signatures(target_device):
-    """
-    :param target_device:
-    :return: None
-    """
-    utils.print_with_color(_("Wiping all existing partition table and filesystem signatures in {0}").format(target_device), "green")
-    subprocess.run(["wipefs", "--all", target_device])
-    check_if_the_drive_is_really_wiped(target_device)
-
-
-def check_if_the_drive_is_really_wiped(target_device):
-    """
-    Some broken locked-down flash drive will appears to be successfully wiped but actually nothing is written into it and will shown previous partition scheme afterwards.  This is the detection of the case and will bail out if such things happened
-
-    :param target_device: The target device file to be checked
-    :return: 0 - success; 1 - failure
-    """
-    utils.check_kill_signal()
-
-    utils.print_with_color(_("Ensure that {0} is really wiped...").format(target_device))
-
-    lsblk = subprocess.run(["lsblk", "--pairs", "--output", "NAME,TYPE", target_device], stdout=subprocess.PIPE).stdout
-
-    grep = subprocess.Popen(["grep", "--count", "TYPE=\"part\""], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    if grep.communicate(input=lsblk)[0].decode("utf-8").strip() != "0":
-        utils.print_with_color(_(
-            "Error: Partition is still detected after wiping all signatures, this indicates that the drive might be locked into readonly mode due to end of lifespan."
-        ))
-        return 1
-    return 0
-
-
-def create_target_partition_table(target_device, partition_table_type):
-    """
-    :param target_device:
-    :param partition_table_type:
-    :return: 0 - success; 1 - failure
-    """
-    utils.check_kill_signal()
-
-    utils.print_with_color(_("Creating new partition table on {0}...").format(target_device), "green")
-
-    if partition_table_type in ["legacy", "msdos", "mbr", "pc"]:
-        parted_partiton_table_argument = "msdos"
-    elif partition_table_type in ["gpt", "guid"]:
-        utils.print_with_color(_("Error: Currently GUID partition table is not supported."), "red")
-        return 1
-    else:
-        utils.print_with_color(_("Error: Partition table not supported."), "red")
-        return 1
-
-    # Create partition table(and overwrite the old one, whatever it was)
-    subprocess.run(["parted", "--script", target_device, "mklabel", parted_partiton_table_argument])
-
-    return 0
-
-
-def create_target_partition(target_device, target_partition, filesystem_type, filesystem_label):
-    """
-    :param target_device:
-    :param target_partition:
-    :param filesystem_type:
-    :param filesystem_label:
-    :return: 1 - failure
-    """
-    utils.check_kill_signal()
-    
-    try:
-        fs_handler = fs_handlers.get_filesystem_handler(filesystem_type)
-        parted_mkpart_fs_type = fs_handler.parted_fs_type()
-    except ValueError as e:
-        utils.print_with_color(str(e), "red")
-        return 1
-
-    utils.print_with_color(_("Creating target partition..."), "green")
-
-    # Create target partition
-    # We start at 4MiB for grub (it needs a post-mbr gap for its code)
-    # and alignment of flash memory block erase segment in general, for details see
-    # http://www.gnu.org/software/grub/manual/grub.html#BIOS-installation and http://lwn.net/Articles/428584/
-    # If NTFS filesystem is used we leave a 512KiB partition
-    # at the end for installing UEFI:NTFS partition for NTFS support
-    try:
-        fs_handler = fs_handlers.get_filesystem_handler(filesystem_type)
-        if fs_handler.needs_uefi_support_partition():
-            # Leave space for UEFI support partition
-            subprocess.run(["parted",
-                            "--script",
-                            target_device,
-                            "mkpart",
-                            "primary", 
-                            parted_mkpart_fs_type,
-                            "4MiB",
-                            "--", 
-                            "-2049s"])
-        else:
-            # Use full space
-            subprocess.run(["parted",
-                            "--script",
-                            target_device,
-                            "mkpart",
-                            "primary",
-                            parted_mkpart_fs_type,
-                            "4MiB",
-                            "100%"])
-    except Exception as e:
-        utils.print_with_color(_("FATAL: {0}").format(str(e)), "red")
-        return 1
-
-    utils.check_kill_signal()
-    workaround.make_system_realize_partition_table_changed(target_device)
-    
-    # Format the partition with the selected filesystem
-    try:
-        fs_handler = fs_handlers.get_filesystem_handler(filesystem_type)
-        if fs_handler.format_partition(target_partition, filesystem_label) != 0:
-            return 1
-    except ValueError as e:
-        utils.print_with_color(str(e), "red")
-        return 1
-        
-    return 0
-
-
-def create_uefi_ntfs_support_partition(target_device):
-    """
-    :param target_device:
-    :return: None
-    """
-    utils.check_kill_signal()
-
-    # FIXME: The partition type should be `fat12` but `fat12` isn't recognized by Parted...
-    # NOTE: The --align is set to none because this partition is indeed misaligned, but ignored due to it's small size
-
-    subprocess.run(["parted",
-                    "--align", "none",
-                    "--script",
-                    target_device,
-                    "mkpart",
-                    "primary",
-                    "fat16",
-                    "--", "-2048s", "-1s"])
-
-
-def install_uefi_support_partition(fs_handler, uefi_support_partition, download_directory):
-    """
-    Install UEFI bootloader partition by writing the partition image into the created partition
-
-    FIXME: Currently this requires internet access to download the image from GitHub directly, 
-    it should be replaced by including the image in our datadir
-
-    :param fs_handler: Filesystem handler instance providing bootloader information
-    :param uefi_support_partition: The previously allocated partition for installing UEFI bootloader
-    :param download_directory: The temporary directory for downloading UEFI:NTFS image from GitHub
-    :return: 1 - failure
-    """
-    bootloader_url, bootloader_filename = fs_handler.get_uefi_bootloader_file()
-    utils.check_kill_signal()
-
-    try:
-        fileName = urllib.request.urlretrieve(bootloader_url, bootloader_filename)[0]
-    except (urllib.error.ContentTooShortError, urllib.error.HTTPError, urllib.error.URLError):
-        utils.print_with_color(
-            _("Warning: Unable to download UEFI bootloader from GitHub. Target device might not be bootable if UEFI firmware doesn't support filesystem."),
-            "yellow"
-        )
-        return 1
-
-    shutil.move(fileName, download_directory + "/" + fileName)  # move file to download_directory
-    shutil.copy2(
-        download_directory + "/" + bootloader_filename,
-        uefi_support_partition
-    )
 
 
 def mount_source_filesystem(source_media, source_fs_mountpoint):
@@ -546,8 +486,383 @@ def copy_filesystem_files(source_fs_mountpoint, target_fs_mountpoint):
                 copy_large_file(path, target_fs_mountpoint + path.replace(source_fs_mountpoint, ""))
             else:
                 shutil.copy2(path, target_fs_mountpoint + path.replace(source_fs_mountpoint, ""))
-
     CopyFiles_handle.stop = True
+
+
+def setup_linux_persistence(target_device, target_partition, filesystem_type, persistence_size_mb, distro_type=None):
+    """
+    Set up persistence for Linux distributions
+
+    Args:
+        target_device (str): Target device path (e.g., /dev/sdX)
+        target_partition (str): Target partition path (e.g., /dev/sdX1)
+        filesystem_type (str): Filesystem type (F2FS, BTRFS)
+        persistence_size_mb (int): Size of persistence in MB
+        distro_type (str, optional): Linux distribution type (ubuntu, fedora, arch, debian)
+
+    Returns:
+        int: 0 on success, non-zero on failure
+    """
+    utils.check_kill_signal()
+
+    utils.print_with_color(_("Setting up Linux persistence..."), "green")
+
+    # Mount the target filesystem
+    target_fs_mountpoint = tempfile.mkdtemp(prefix="WowUSB.")
+    if mount_target_filesystem(target_partition, target_fs_mountpoint) != 0:
+        utils.print_with_color(_("Error: Unable to mount target filesystem"), "red")
+        return 1
+
+    try:
+        # Detect Linux distribution if not specified
+        if distro_type is None:
+            distro_type = detect_linux_distribution(target_fs_mountpoint)
+            utils.print_with_color(_("Detected Linux distribution: {0}").format(distro_type), "green")
+
+        # Set up persistence based on filesystem type and distribution
+        if filesystem_type.upper() == "BTRFS":
+            result = setup_btrfs_persistence(target_fs_mountpoint, distro_type)
+        elif filesystem_type.upper() == "F2FS":
+            result = setup_f2fs_persistence(target_device, target_partition, target_fs_mountpoint,
+                                           persistence_size_mb, distro_type)
+        else:
+            utils.print_with_color(_("Error: Unsupported filesystem type for persistence: {0}").format(filesystem_type), "red")
+            result = 1
+
+        return result
+    finally:
+        # Unmount the target filesystem
+        utils.print_with_color(_("Unmounting target filesystem..."), "green")
+        subprocess.run(["umount", target_fs_mountpoint])
+        os.rmdir(target_fs_mountpoint)
+
+
+def detect_linux_distribution(mountpoint):
+    """
+    Detect the Linux distribution from the mounted filesystem
+
+    Args:
+        mountpoint (str): Path to the mounted filesystem
+
+    Returns:
+        str: Distribution type (ubuntu, fedora, arch, debian, or unknown)
+    """
+    # Check for Ubuntu/Mint
+    if os.path.exists(os.path.join(mountpoint, "casper")):
+        return "ubuntu"
+
+    # Check for Fedora
+    if os.path.exists(os.path.join(mountpoint, "LiveOS")):
+        return "fedora"
+
+    # Check for Arch
+    if os.path.exists(os.path.join(mountpoint, "arch")):
+        return "arch"
+
+    # Check for Debian
+    if os.path.exists(os.path.join(mountpoint, "live")):
+        return "debian"
+
+    # Default to unknown
+    return "unknown"
+
+
+def setup_btrfs_persistence(mountpoint, distro_type):
+    """
+    Set up persistence for BTRFS filesystem
+
+    Args:
+        mountpoint (str): Path to the mounted filesystem
+        distro_type (str): Linux distribution type
+
+    Returns:
+        int: 0 on success, non-zero on failure
+    """
+    utils.check_kill_signal()
+
+    utils.print_with_color(_("Setting up BTRFS persistence..."), "green")
+
+    try:
+        # Create rootfs subvolume if it doesn't exist
+        if not os.path.exists(os.path.join(mountpoint, "rootfs")):
+            utils.print_with_color(_("Creating rootfs subvolume..."), "green")
+            subprocess.run(["btrfs", "subvolume", "create", os.path.join(mountpoint, "rootfs")], check=True)
+
+        # Create persistence subvolume
+        utils.print_with_color(_("Creating persistence subvolume..."), "green")
+        subprocess.run(["btrfs", "subvolume", "create", os.path.join(mountpoint, "persistence")], check=True)
+
+        # Configure persistence based on distribution
+        if distro_type == "ubuntu":
+            # Create persistence.conf for Ubuntu
+            with open(os.path.join(mountpoint, "persistence", "persistence.conf"), "w") as f:
+                f.write("/ union\n")
+
+            # Modify boot parameters in grub.cfg
+            grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+            if os.path.exists(grub_cfg):
+                with open(grub_cfg, "r") as f:
+                    content = f.read()
+
+                # Add persistence boot parameters
+                content = content.replace("boot=casper", "boot=casper persistent")
+
+                with open(grub_cfg, "w") as f:
+                    f.write(content)
+
+        elif distro_type == "fedora":
+            # Create overlay directory
+            os.makedirs(os.path.join(mountpoint, "persistence", "overlay"), exist_ok=True)
+
+            # Modify boot parameters in grub.cfg
+            grub_cfg = os.path.join(mountpoint, "boot", "grub2", "grub.cfg")
+            if os.path.exists(grub_cfg):
+                with open(grub_cfg, "r") as f:
+                    content = f.read()
+
+                # Add persistence boot parameters
+                content = content.replace("root=live:", "root=live: rd.live.overlay.overlayfs=1")
+
+                with open(grub_cfg, "w") as f:
+                    f.write(content)
+
+        elif distro_type == "debian":
+            # Create persistence.conf for Debian
+            with open(os.path.join(mountpoint, "persistence", "persistence.conf"), "w") as f:
+                f.write("/ union\n")
+
+            # Modify boot parameters in grub.cfg
+            grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+            if os.path.exists(grub_cfg):
+                with open(grub_cfg, "r") as f:
+                    content = f.read()
+
+                # Add persistence boot parameters
+                content = content.replace("boot=live", "boot=live persistence")
+
+                with open(grub_cfg, "w") as f:
+                    f.write(content)
+
+        elif distro_type == "arch":
+            # Create persistence directory
+            os.makedirs(os.path.join(mountpoint, "persistence", "cowspace"), exist_ok=True)
+
+            # Arch Linux requires custom hooks for persistence
+            utils.print_with_color(_("Note: Arch Linux persistence may require additional configuration"), "yellow")
+
+        else:
+            utils.print_with_color(_("Warning: Unknown distribution type. Persistence may not work."), "yellow")
+            # Create generic persistence.conf
+            with open(os.path.join(mountpoint, "persistence", "persistence.conf"), "w") as f:
+                f.write("/ union\n")
+
+        utils.print_with_color(_("BTRFS persistence setup completed"), "green")
+        return 0
+
+    except subprocess.SubprocessError as e:
+        utils.print_with_color(_("Error: Failed to set up BTRFS persistence: {0}").format(str(e)), "red")
+        return 1
+    except Exception as e:
+        utils.print_with_color(_("Error: Failed to set up BTRFS persistence: {0}").format(str(e)), "red")
+        return 1
+
+
+def setup_f2fs_persistence(target_device, target_partition, mountpoint, persistence_size_mb, distro_type):
+    """
+    Set up persistence for F2FS filesystem
+
+    Args:
+        target_device (str): Target device path (e.g., /dev/sdX)
+        target_partition (str): Target partition path (e.g., /dev/sdX1)
+        mountpoint (str): Path to the mounted filesystem
+        persistence_size_mb (int): Size of persistence in MB
+        distro_type (str): Linux distribution type
+
+    Returns:
+        int: 0 on success, non-zero on failure
+    """
+    utils.check_kill_signal()
+
+    utils.print_with_color(_("Setting up F2FS persistence..."), "green")
+
+    try:
+        # For F2FS, we create a separate persistence partition or file
+        if persistence_size_mb >= 1024:  # If persistence size is >= 1GB, create a partition
+            # Create a persistence partition
+            utils.print_with_color(_("Creating persistence partition..."), "green")
+
+            # Get the last partition number
+            lsblk_output = subprocess.run(["lsblk", "-no", "NAME", target_device],
+                                         capture_output=True, text=True).stdout
+            partition_numbers = []
+            for line in lsblk_output.splitlines():
+                if line.startswith(os.path.basename(target_device)) and line != os.path.basename(target_device):
+                    try:
+                        partition_numbers.append(int(line.replace(os.path.basename(target_device), "")))
+                    except ValueError:
+                        pass
+
+            last_partition_number = max(partition_numbers) if partition_numbers else 0
+            persistence_partition = f"{target_device}{last_partition_number + 1}"
+
+            # Create the persistence partition
+            subprocess.run([
+                "parted", "--script", target_device,
+                "mkpart", "primary", "f2fs",
+                f"{-persistence_size_mb - 1}MiB", "-1MiB"
+            ], check=True)
+
+            # Format the persistence partition
+            utils.print_with_color(_("Formatting persistence partition..."), "green")
+            subprocess.run(["mkfs.f2fs", "-f", "-l", "persistence", persistence_partition], check=True)
+
+            # Mount the persistence partition
+            persistence_mountpoint = tempfile.mkdtemp(prefix="WowUSB_persistence.")
+            subprocess.run(["mount", persistence_partition, persistence_mountpoint], check=True)
+
+            try:
+                # Configure persistence based on distribution
+                if distro_type == "ubuntu":
+                    # Create persistence.conf for Ubuntu
+                    with open(os.path.join(persistence_mountpoint, "persistence.conf"), "w") as f:
+                        f.write("/ union\n")
+
+                    # Modify boot parameters in grub.cfg
+                    grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+                    if os.path.exists(grub_cfg):
+                        with open(grub_cfg, "r") as f:
+                            content = f.read()
+
+                        # Add persistence boot parameters
+                        content = content.replace("boot=casper",
+                                                   f"boot=casper persistent persistence-label=persistence")
+
+                        with open(grub_cfg, "w") as f:
+                            f.write(content)
+
+                elif distro_type == "fedora":
+                    # Create overlay directory
+                    os.makedirs(os.path.join(persistence_mountpoint, "overlay"), exist_ok=True)
+
+                    # Modify boot parameters in grub.cfg
+                    grub_cfg = os.path.join(mountpoint, "boot", "grub2", "grub.cfg")
+                    if os.path.exists(grub_cfg):
+                        with open(grub_cfg, "r") as f:
+                            content = f.read()
+
+                        # Add persistence boot parameters
+                        content = content.replace("root=live:",
+                                                   "root=live: rd.live.overlay=persistence rd.live.overlay.overlayfs=1")
+
+                        with open(grub_cfg, "w") as f:
+                            f.write(content)
+
+                elif distro_type == "debian":
+                    # Create persistence.conf for Debian
+                    with open(os.path.join(persistence_mountpoint, "persistence.conf"), "w") as f:
+                        f.write("/ union\n")
+
+                    # Modify boot parameters in grub.cfg
+                    grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+                    if os.path.exists(grub_cfg):
+                        with open(grub_cfg, "r") as f:
+                            content = f.read()
+
+                        # Add persistence boot parameters
+                        content = content.replace("boot=live",
+                                                   "boot=live persistence persistence-label=persistence")
+
+                        with open(grub_cfg, "w") as f:
+                            f.write(content)
+
+                elif distro_type == "arch":
+                    # Create persistence directory
+                    os.makedirs(os.path.join(persistence_mountpoint, "cowspace"), exist_ok=True)
+
+                    # Arch Linux requires custom hooks for persistence
+                    utils.print_with_color(_("Note: Arch Linux persistence may require additional configuration"), "yellow")
+
+                else:
+                    utils.print_with_color(_("Warning: Unknown distribution type. Persistence may not work."), "yellow")
+                    # Create generic persistence.conf
+                    with open(os.path.join(persistence_mountpoint, "persistence.conf"), "w") as f:
+                        f.write("/ union\n")
+
+            finally:
+                # Unmount the persistence partition
+                utils.print_with_color(_("Unmounting persistence partition..."), "green")
+                subprocess.run(["umount", persistence_mountpoint])
+                os.rmdir(persistence_mountpoint)
+
+        else:
+            # Create a persistence file
+            utils.print_with_color(_("Creating persistence file..."), "green")
+
+            # Determine persistence filename based on distribution
+            if distro_type == "ubuntu":
+                persistence_file = os.path.join(mountpoint, "casper-rw")
+            elif distro_type == "fedora":
+                persistence_file = os.path.join(mountpoint, "overlay-live")
+            elif distro_type == "debian":
+                persistence_file = os.path.join(mountpoint, "persistence")
+            else:
+                persistence_file = os.path.join(mountpoint, "persistence.img")
+
+            # Create the persistence file
+            utils.print_with_color(_("Creating {0}MB persistence file...").format(persistence_size_mb), "green")
+            subprocess.run(["dd", "if=/dev/zero", f"of={persistence_file}",
+                              f"bs=1M", f"count={persistence_size_mb}", "status=progress"], check=True)
+
+            # Format the persistence file
+            utils.print_with_color(_("Formatting persistence file..."), "green")
+            subprocess.run(["mkfs.ext4", "-F", "-L", "persistence", persistence_file], check=True)
+
+            # Modify boot parameters based on distribution
+            if distro_type == "ubuntu":
+                grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+                if os.path.exists(grub_cfg):
+                    with open(grub_cfg, "r") as f:
+                        content = f.read()
+
+                    # Add persistence boot parameters
+                    content = content.replace("boot=casper", "boot=casper persistent")
+
+                    with open(grub_cfg, "w") as f:
+                        f.write(content)
+
+            elif distro_type == "fedora":
+                grub_cfg = os.path.join(mountpoint, "boot", "grub2", "grub.cfg")
+                if os.path.exists(grub_cfg):
+                    with open(grub_cfg, "r") as f:
+                        content = f.read()
+
+                    # Add persistence boot parameters
+                    content = content.replace("root=live:", "root=live: rd.live.overlay=persistence rd.live.overlay.overlayfs=1")
+
+                    with open(grub_cfg, "w") as f:
+                        f.write(content)
+
+            elif distro_type == "debian":
+                grub_cfg = os.path.join(mountpoint, "boot", "grub", "grub.cfg")
+                if os.path.exists(grub_cfg):
+                    with open(grub_cfg, "r") as f:
+                                content = f.read()
+
+                    # Add persistence boot parameters
+                    content = content.replace("boot=live", "boot=live persistence")
+
+                    with open(grub_cfg, "w") as f:
+                        f.write(content)
+
+        utils.print_with_color(_("F2FS persistence setup completed"), "green")
+        return 0
+
+    except subprocess.SubprocessError as e:
+        utils.print_with_color(_("Error: Failed to set up F2FS persistence: {0}").format(str(e)), "red")
+        return 1
+    except Exception as e:
+        utils.print_with_color(_("Error: Failed to set up F2FS persistence: {0}").format(str(e)), "red")
+        return 1
 
 
 def copy_large_file(source, target):
@@ -556,7 +871,6 @@ def copy_large_file(source, target):
     It is not a big problem when using cli (user can just hit ctrl+c and throw exception),
     but when using gui this part of script needs to "ping" gui for progress reporting
     and check if user didn't click "cancel" (see utils.check_kill_signal())
-
     :param source:
     :param target:
     :return: None
@@ -645,6 +959,7 @@ def cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_m
     :param source_fs_mountpoint:
     :param target_fs_mountpoint:
     :param temp_directory:
+    :param target_media:
     :return: None
     """
     if CopyFiles_handle.is_alive():
@@ -666,15 +981,13 @@ def cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_m
         flag_unclean = True
 
     if flag_unclean:
-        utils.print_with_color(_("Some mountpoints are not unmount/cleaned successfully and must be done manually"),
-                              "yellow")
+        utils.print_with_color(_("Some mountpoints are not unmount/cleaned successfully and must be done manually"), "yellow")
 
     if flag_unsafe:
         utils.print_with_color(
             _("We were unable to unmount target filesystem for you, please make sure target filesystem is unmounted before detaching to prevent data corruption"),
             "yellow")
-        utils.print_with_color(_("Some mountpoints are not unmount/cleaned successfully and must be done manually"),
-                              "yellow")
+        utils.print_with_color(_("Some mountpoints are not unmount/cleaned successfully and must be done manually"), "yellow")
 
     if utils.check_is_target_device_busy(target_media):
         utils.print_with_color(
@@ -692,35 +1005,282 @@ def cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_m
 
 def setup_arguments():
     """
-    :return: Setted up argparse.ArgumentParser object
+    Set up command line arguments
+
+    Returns:
+        argparse.Namespace: Parsed command line arguments
     """
-    parser = argparse.ArgumentParser(
-        description="WowUSB-DS9 can create a bootable Microsoft Windows(R) USB storage device from an existing Windows optical disk or an ISO disk image.")
-    parser.add_argument("source", help="Source")
-    parser.add_argument("target", help="Target")
-    parser.add_argument("--device", "-d", action="store_true",
-                        help="Completely WIPE the entire USB storage  device, then build a bootable Windows USB device from scratch.")
-    parser.add_argument("--partition", "-p", action="store_true",
-                        help="Copy Windows files to an existing partition of a USB storage device and make it bootable.  This allows files to coexist as long as no filename conflict exists.")
+    parser = argparse.ArgumentParser(description=_("Create a bootable Windows USB drive from an ISO or DVD"))
 
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose mode")
-    parser.add_argument("--version", "-V", action="version", version=application_version,
-                        help="Print application version")
-    parser.add_argument("--about", "-ab", action="store_true", help="Show info about this application")
-    parser.add_argument("--no-color", action="store_true", help="Disable message coloring")
-    parser.add_argument("--debug", action="store_true", help="Enable script debugging")
-    parser.add_argument("--label", "-l", default="Windows USB",
-                        help="Specify label for the newly created file system in --device creation method")
-    parser.add_argument("--workaround-bios-boot-flag", action="store_true",
-                        help="Workaround BIOS bug that won't include the device in boot menu if non of the partition's boot flag is toggled")
-    parser.add_argument("--workaround-skip-grub", action="store_true",
-                        help="This will skip the legacy grub bootloader creation step.")
-    parser.add_argument("--target-filesystem", "--tgt-fs", choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], 
-                        default="FAT", type=str.upper,
-                        help="Specify the filesystem to use as the target partition's filesystem.")
-    parser.add_argument('--for-gui', action="store_true", help=argparse.SUPPRESS)
+    # Source arguments
+    parser.add_argument("--device", "-d", action="store_true", help=_("Device mode: Create a bootable USB drive from an ISO or DVD"))
+    parser.add_argument("--partition", "-p", action="store_true", help=_("Partition mode: Install Windows to an existing partition"))
 
+    # Target arguments
+    parser.add_argument("--target-filesystem", "-t", choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], default="AUTO",
+                        help=_("Target filesystem type (default: AUTO)"))
+
+    # Windows-To-Go option
+    parser.add_argument("--wintogo", "-w", action="store_true", help=_("Create a Windows-To-Go installation"))
+
+    # Linux persistence option
+    parser.add_argument("--persistence", "-P", type=int, metavar="SIZE",
+                        help=_("Create a persistence partition or file of SIZE MB (Linux only)"))
+
+    # Other options
+    parser.add_argument("--list-devices", "-l", action="store_true", help=_("List available devices"))
+    parser.add_argument("--verbose", "-v", action="store_true", help=_("Enable verbose output"))
+    parser.add_argument("--no-color", "-n", action="store_true", help=_("Disable colored output"))
+    parser.add_argument("--for-gui", "-g", action=argparse.SUPPRESS)
+
+    # Positional arguments
+    parser.add_argument("source", nargs="?", help=_("Source ISO or DVD path"))
+    parser.add_argument("target", nargs="?", help=_("Target device or partition"))
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Set install mode
+    if args.device:
+        args.install_mode = "device"
+    elif args.partition:
+        args.install_mode = "partition"
+    elif args.target and not os.path.exists(args.target):
+        # If target doesn't exist, assume it's a device
+        args.install_mode = "device"
+    elif args.target and os.path.exists(args.target):
+        # If target exists, check if it's a device or partition
+        if utils.is_block_device(args.target) and not utils.is_partition(args.target):
+            args.install_mode = "device"
+        else:
+            args.install_mode = "partition"
+    else:
+        # Default to device mode
+        args.install_mode = "device"
+
+    # Set target partition
+    if args.install_mode == "device":
+        args.target_partition = args.target + "1" if args.target else None
+    else:
+        args.target_partition = args.target
+        args.target = None
+
+    # Validate Windows-To-Go option
+    if args.wintogo and args.install_mode != "device":
+        parser.error(_("Windows-To-Go requires device mode"))
+
+    # Validate persistence option
+    if args.persistence is not None:
+        if args.persistence < 512:
+            parser.error(_("Persistence size must be at least 512MB"))
+        if args.wintogo:
+            parser.error(_("Persistence is not compatible with Windows-To-Go"))
+        if args.target_filesystem not in ["F2FS", "BTRFS", "AUTO"]:
+            parser.error(_("Persistence requires F2FS or BTRFS filesystem"))
+
+    return args
+
+
+def setup_multiboot_arguments(parser):
+    """
+    Set up multi-boot command line arguments
+    
+    Args:
+        parser (argparse.ArgumentParser): Argument parser
+        
+    Returns:
+        argparse.ArgumentParser: Updated argument parser
+    """
+    # Multi-boot mode
+    parser.add_argument("--multiboot", "-m", action="store_true",
+                        help=_("Multi-boot mode: Create a multi-boot USB drive"))
+    
+    # OS options
+    parser.add_argument("--add-os", "-a", action="append", nargs=4,
+                        metavar=("TYPE", "ISO", "SIZE_GB", "FILESYSTEM"),
+                        help=_("Add OS (type, ISO path, size in GB, filesystem)"))
+    
+    # Shared partition options
+    parser.add_argument("--shared-size", "-s", type=int, default=4,
+                        help=_("Shared partition size in GB"))
+    parser.add_argument("--shared-filesystem", "-f", default="EXFAT",
+                        help=_("Shared partition filesystem"))
+    
     return parser
+
+
+# Update setup_arguments function to include multi-boot arguments
+original_setup_arguments = setup_arguments
+
+def setup_arguments():
+    """
+    Set up command line arguments
+    
+    Returns:
+        argparse.Namespace: Parsed command line arguments
+    """
+    # Get original parser
+    parser = argparse.ArgumentParser(description=_("Create a bootable Windows USB drive from an ISO or DVD"))
+    
+    # Source arguments
+    parser.add_argument("--device", "-d", action="store_true", help=_("Device mode: Create a bootable USB drive from an ISO or DVD"))
+    parser.add_argument("--partition", "-p", action="store_true", help=_("Partition mode: Install Windows to an existing partition"))
+    
+    # Target arguments
+    parser.add_argument("--target-filesystem", "-t", choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], default="AUTO",
+                        help=_("Target filesystem type (default: AUTO)"))
+    
+    # Windows-To-Go option
+    parser.add_argument("--wintogo", "-w", action="store_true", help=_("Create a Windows-To-Go installation"))
+    
+    # Linux persistence option
+    parser.add_argument("--persistence", "-P", type=int, metavar="SIZE",
+                        help=_("Create a persistence partition or file of SIZE MB (Linux only)"))
+    
+    # Multi-boot options
+    setup_multiboot_arguments(parser)
+    
+    # Other options
+    parser.add_argument("--list-devices", "-l", action="store_true", help=_("List available devices"))
+    parser.add_argument("--verbose", "-v", action="store_true", help=_("Enable verbose output"))
+    parser.add_argument("--no-color", "-n", action="store_true", help=_("Disable colored output"))
+    parser.add_argument("--for-gui", "-g", action=argparse.SUPPRESS)
+    
+    # Positional arguments
+    parser.add_argument("source", nargs="?", help=_("Source ISO or DVD path"))
+    parser.add_argument("target", nargs="?", help=_("Target device or partition"))
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    # Set install mode
+    if args.multiboot:
+        args.install_mode = "multiboot"
+    elif args.device:
+        args.install_mode = "device"
+    elif args.partition:
+        args.install_mode = "partition"
+    elif args.target and not os.path.exists(args.target):
+        # If target doesn't exist, assume it's a device
+        args.install_mode = "device"
+    elif args.target and os.path.exists(args.target):
+        # If target exists, check if it's a device or partition
+        if utils.is_block_device(args.target) and not utils.is_partition(args.target):
+            args.install_mode = "device"
+        else:
+            args.install_mode = "partition"
+    else:
+        # Default to device mode
+        args.install_mode = "device"
+    
+    # Set target partition
+    if args.install_mode == "device" or args.install_mode == "multiboot":
+        args.target_partition = args.target + "1" if args.target else None
+    else:
+        args.target_partition = args.target
+        args.target = None
+    
+    # Validate Windows-To-Go option
+    if args.wintogo and args.install_mode != "device":
+        parser.error(_("Windows-To-Go requires device mode"))
+    
+    # Validate persistence option
+    if args.persistence is not None:
+        if args.persistence < 512:
+            parser.error(_("Persistence size must be at least 512MB"))
+        if args.wintogo:
+            parser.error(_("Persistence is not compatible with Windows-To-Go"))
+        if args.target_filesystem not in ["F2FS", "BTRFS", "AUTO"]:
+            parser.error(_("Persistence requires F2FS or BTRFS filesystem"))
+    
+    # Validate multi-boot options
+
+def main(args, temp_dir=None):
+    """
+    Main function
+    
+    Args:
+        args (argparse.Namespace): Command line arguments
+        temp_dir (str, optional): Temporary directory
+        
+    Returns:
+        int: 0 on success, non-zero on failure
+    """
+    # Handle multi-boot mode
+    if args.install_mode == "multiboot":
+        utils.print_with_color(_("Multi-boot mode selected"), "green")
+        
+        # Import multiboot module
+        try:
+            import WowUSB.multiboot as multiboot
+        except ImportError:
+            utils.print_with_color(_("Error: Multi-boot module not found"), "red")
+            return 1
+        
+        # Check target device
+        if not args.target:
+            utils.print_with_color(_("Error: Target device not specified"), "red")
+            return 1
+        
+        # Check if target device exists
+        if not os.path.exists(args.target):
+            utils.print_with_color(_("Error: Target device not found: {}").format(args.target), "red")
+            return 1
+        
+        # Check if target device is a block device
+        if not utils.is_block_device(args.target):
+            utils.print_with_color(_("Error: Target is not a block device: {}").format(args.target), "red")
+            return 1
+        
+        # Check if target device is mounted
+        if utils.is_mounted(args.target):
+            utils.print_with_color(_("Error: Target device is mounted: {}").format(args.target), "red")
+            return 1
+        
+        # Prepare OS configurations
+        os_configs = []
+        
+        for os_type, iso_path, size_gb, filesystem in args.add_os:
+            # Check if ISO exists
+            if not os.path.exists(iso_path):
+                utils.print_with_color(_("Error: ISO file not found: {}").format(iso_path), "red")
+                return 1
+            
+            # Check if ISO is readable
+            if not os.access(iso_path, os.R_OK):
+                utils.print_with_color(_("Error: ISO file is not readable: {}").format(iso_path), "red")
+                return 1
+            
+            # Add OS configuration
+            os_configs.append({
+                "type": os_type.lower(),
+                "name": os_type.capitalize(),
+                "iso_path": iso_path,
+                "size_mb": int(float(size_gb) * 1024),
+                "filesystem": filesystem.upper()
+            })
+        
+        # Create multi-boot USB drive
+        return multiboot.create_multiboot_usb(
+            target_device=args.target,
+            os_configs=os_configs,
+            shared_size_mb=args.shared_size * 1024,
+            shared_filesystem=args.shared_filesystem.upper(),
+            verbose=args.verbose
+        )
+    
+    # Handle device and partition modes (existing code)
+        if not args.add_os:
+            parser.error(_("At least one OS must be specified with --add-os"))
+        if args.wintogo:
+            parser.error(_("Windows-To-Go is not compatible with multi-boot mode"))
+        if args.persistence is not None:
+            parser.error(_("Persistence is not compatible with multi-boot mode"))
+    
+    return args
+
+# Replace original setup_arguments with updated version
+setup_arguments.__doc__ = original_setup_arguments.__doc__
 
 
 class ReportCopyProgress(threading.Thread):
