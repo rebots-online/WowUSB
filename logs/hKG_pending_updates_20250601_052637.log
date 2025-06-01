@@ -1,0 +1,226 @@
+## Pending hKG Updates - 2025-06-01 05:26:37 ##
+
+This log contains Neo4j and Qdrant operations that failed due to service unavailability.
+These should be re-attempted once the services are back online.
+
+### Neo4j Pending Operations ###
+
+**1. Create Entities:**
+```json
+{
+  "entities": [
+    {
+      "name": "WowUSB_ProjectRoot",
+      "entityType": "Directory",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB",
+        "uuid: e9f20401-981c-42a7-8f78-919c65c8cadc"
+      ]
+    },
+    {
+      "name": "WowUSB_DocsDir",
+      "entityType": "Directory",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB/docs",
+        "uuid: a2e7e104-02e8-4f3d-8f3c-72a078f38085"
+      ]
+    },
+    {
+      "name": "WowUSB_ChecklistsDir",
+      "entityType": "Directory",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB/checklists",
+        "uuid: b8d3f5c0-12a7-4b8e-9c6d-06a8e3f7ace0"
+      ]
+    },
+    {
+      "name": "WowUSB_DocumentationMapFile",
+      "entityType": "File",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB/docs/DOCUMENTATION_MAP.md",
+        "Purpose: Visual map of documentation structure",
+        "uuid: c1a9b8d7-0e3c-4f2a-b12f-5e8d7c6a5b4e"
+      ]
+    },
+    {
+      "name": "WowUSB_ReleaseChecklist_20250601",
+      "entityType": "File",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB/checklists/RELEASE_CHECKLIST_20250601_050714.md",
+        "Purpose: Comprehensive release checklist",
+        "uuid: d7e2c3b1-9a8f-4c7d-b0e1-3f2a1c0b9d8e"
+      ]
+    },
+    {
+      "name": "WowUSB_ProjectReorgPlan_20250601",
+      "entityType": "File",
+      "observations": [
+        "Path: /home/robin/CascadeProjects/WowUSB/PROJECT_REORG_PLAN_20250601_050714.md",
+        "Purpose: Architectural plan for project reorganization",
+        "uuid: f0c7b8a1-3d2e-4c1f-b9a0-8e7d6c5b4a3f"
+      ]
+    },
+    {
+      "name": "ARCHITECTURE.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/ARCHITECTURE.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/ARCHITECTURE.md", "Status: Moved to docs/", "uuid: 1f7b9c0a-8e2d-4f5a-b1c0-3e2d1c0b9a8f"]
+    },
+    {
+      "name": "CHANGELOG.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/CHANGELOG.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/CHANGELOG.md", "Status: Moved to docs/", "uuid: 2a0c1e3d-7f9b-4a2e-8d7c-6b5a4f3e2d1c"]
+    },
+    {
+      "name": "CHECKLIST-BALANCED.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/CHECKLIST-BALANCED.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/CHECKLIST-BALANCED.md", "Status: Moved to docs/", "uuid: 3b1d2f4e-8a0c-4b3f-9e8d-7c6b5a4f3e2d"]
+    },
+    {
+      "name": "CHECKLIST.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/CHECKLIST.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/CHECKLIST.md", "Status: Moved to docs/", "uuid: 4c2e3a5f-9b1d-4c4a-a0f9-8d7c6b5a4f3e"]
+    },
+    {
+      "name": "CONTRIBUTING.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/CONTRIBUTING.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/CONTRIBUTING.md", "Status: Moved to docs/", "uuid: 5d3f4b6a-0c2e-4d5b-b1a0-9e8d7c6b5a4f"]
+    },
+    {
+      "name": "F2FS_BTRFS_TEST_PLAN.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/F2FS_BTRFS_TEST_PLAN.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/F2FS_BTRFS_TEST_PLAN.md", "Status: Moved to docs/", "uuid: 6e4a5c7b-1d3f-4e6c-b2b1-0f9e8d7c6b5a"]
+    },
+    {
+      "name": "F2FS_LINUX_SPEC.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/F2FS_LINUX_SPEC.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/F2FS_LINUX_SPEC.md", "Status: Moved to docs/", "uuid: 7f5b6d8c-2e4a-4f7d-b3c2-1a0f9e8d7c6b"]
+    },
+    {
+      "name": "IMPLEMENTATION_SUMMARY.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/IMPLEMENTATION_SUMMARY.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/IMPLEMENTATION_SUMMARY.md", "Status: Moved to docs/", "uuid: 8a6c7e9d-3f5b-4a8e-b4d3-2b1a0f9e8d7c"]
+    },
+    {
+      "name": "Initial-Planning-exfat-ntfs-addition-cline_task_mar-3-2025_1-32-04-pm.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/Initial-Planning-exfat-ntfs-addition-cline_task_mar-3-2025_1-32-04-pm.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/Initial-Planning-exfat-ntfs-addition-cline_task_mar-3-2025_1-32-04-pm.md", "Status: Moved to docs/", "uuid: 9b7d8f0e-4a6c-4b9f-b5e4-3c2b1a0f9e8d"]
+    },
+    {
+      "name": "MULTIBOOT_DESIGN.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/MULTIBOOT_DESIGN.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/MULTIBOOT_DESIGN.md", "Status: Moved to docs/", "uuid: 0c8e9a1f-5b7d-4ca0-b6f5-4d3c2b1a0f9e"]
+    },
+    {
+      "name": "PRODUCTION_BUILD.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/PRODUCTION_BUILD.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/PRODUCTION_BUILD.md", "Status: Moved to docs/", "uuid: 1d9f0b2a-6c8e-4db1-b7a6-5e4d3c2b1a0f"]
+    },
+    {
+      "name": "README-ENHANCED.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/README-ENHANCED.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/README-ENHANCED.md", "Status: Moved to docs/", "uuid: 2ea01c3b-7d9f-4ec2-b8b7-6f5e4d3c2b1a"]
+    },
+    {
+      "name": "RELEASE_NOTES.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/RELEASE_NOTES.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/RELEASE_NOTES.md", "Status: Moved to docs/", "uuid: 3fb12d4c-8ea0-4fd3-b9c8-7a6f5e4d3c2b"]
+    },
+    {
+      "name": "ROADMAP-BALANCED.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/ROADMAP-BALANCED.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/ROADMAP-BALANCED.md", "Status: Moved to docs/", "uuid: 4ac23e5d-9fb1-4ae4-bad9-8b7a6f5e4d3c"]
+    },
+    {
+      "name": "ROADMAP.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/ROADMAP.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/ROADMAP.md", "Status: Moved to docs/", "uuid: 5bd34f6e-0ac2-4bf5-bbed-9c8b7a6f5e4d"]
+    },
+    {
+      "name": "TECHNICAL_DESIGN.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/TECHNICAL_DESIGN.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/TECHNICAL_DESIGN.md", "Status: Moved to docs/", "uuid: 6ce45a7f-1bd3-4ca6-bcf0-ad9c8b7a6f5e"]
+    },
+    {
+      "name": "TROUBLESHOOTING.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/TROUBLESHOOTING.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/TROUBLESHOOTING.md", "Status: Moved to docs/", "uuid: 7df56b8a-2ce4-4db7-bd01-bead9c8b7a6f"]
+    },
+    {
+      "name": "UI_FLOW_ASSESSMENT.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/UI_FLOW_ASSESSMENT.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/UI_FLOW_ASSESSMENT.md", "Status: Moved to docs/", "uuid: 8ea67c9b-3df5-4ec8-be12-cfbead9c8b7a"]
+    },
+    {
+      "name": "USER_GUIDE.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/USER_GUIDE.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/USER_GUIDE.md", "Status: Moved to docs/", "uuid: 9fb78da0-4ea6-4fd9-bf23-d0cfbead9c8b"]
+    },
+    {
+      "name": "WINDOWS11_TO_GO_SPEC.md_DocFile",
+      "entityType": "File",
+      "observations": ["OriginalPath: /home/robin/CascadeProjects/WowUSB/WINDOWS11_TO_GO_SPEC.md", "NewPath: /home/robin/CascadeProjects/WowUSB/docs/WINDOWS11_TO_GO_SPEC.md", "Status: Moved to docs/", "uuid: a0c89eb1-5fb7-4ae0-c034-e1d0cfbead9c"]
+    }
+  ]
+}
+```
+
+**2. Create Relations (Example structure, repeat for all relevant connections):**
+```json
+{
+  "relations": [
+    {"from": "WowUSB_ProjectRoot", "to": "WowUSB_DocsDir", "relationType": "CONTAINS"},
+    {"from": "WowUSB_ProjectRoot", "to": "WowUSB_ChecklistsDir", "relationType": "CONTAINS"},
+    {"from": "WowUSB_ProjectRoot", "to": "WowUSB_ProjectReorgPlan_20250601", "relationType": "CONTAINS"},
+    {"from": "WowUSB_DocsDir", "to": "WowUSB_DocumentationMapFile", "relationType": "CONTAINS"},
+    {"from": "WowUSB_ChecklistsDir", "to": "WowUSB_ReleaseChecklist_20250601", "relationType": "CONTAINS"},
+    {"from": "WowUSB_DocumentationMapFile", "to": "WowUSB_DocsDir", "relationType": "DESCRIBES_STRUCTURE_OF"},
+    // For each moved document:
+    {"from": "WowUSB_DocsDir", "to": "ARCHITECTURE.md_DocFile", "relationType": "CONTAINS"},
+    {"from": "ARCHITECTURE.md_DocFile", "to": "WowUSB_DocsDir", "relationType": "LOCATED_IN"},
+    // ... (repeat for all 20 moved doc files)
+  ]
+}
+```
+
+### Qdrant Pending Operations ###
+
+**1. Store Architectural Plan Summary:**
+```json
+{
+  "information": "Architectural plan for WowUSB project reorganization and release preparation (target: next version, e.g., v0.4.0). Key activities: documentation moved to /docs, new comprehensive release checklist created in /checklists/RELEASE_CHECKLIST_20250601_050714.md, and a documentation map generated in /docs/DOCUMENTATION_MAP.md.",
+  "metadata": {
+    "uuid": "f0c7b8a1-3d2e-4c1f-b9a0-8e7d6c5b4a3f",
+    "type": "ProjectPlan",
+    "project": "WowUSB",
+    "timestamp": "2025-06-01T05:07:14-04:00"
+  }
+}
+```
+
+**2. Store New Release Checklist Summary:**
+```json
+{
+  "information": "New WowUSB release checklist (RELEASE_CHECKLIST_20250601_050714.md) created. Structure: A. Pre-Release (Code Freeze, Testing, Docs, Versioning, Build/Package), B. Release (Tagging, Deployment, Release Notes), C. Post-Release (Announce, Merge, Monitor, Housekeeping). Designed for clarity and detailed execution.",
+  "metadata": {
+    "uuid": "d7e2c3b1-9a8f-4c7d-b0e1-3f2a1c0b9d8e",
+    "type": "ReleaseChecklistSummary",
+    "project": "WowUSB",
+    "file_path": "/home/robin/CascadeProjects/WowUSB/checklists/RELEASE_CHECKLIST_20250601_050714.md",
+    "timestamp": "2025-06-01T05:07:14-04:00"
+  }
+}
+```
+
+**3. Store Documentation Map Mermaid Content:**
+```json
+{
+  "information": "```mermaid\ngraph TD\n    A[WowUSB Documentation Root: /docs] --> B(Design Documents)\n    A --> C(User Information & Guides)\n    A --> D(Development & Contribution)\n    A --> E(Release, Planning & Checklists)\n    A --> F(Testing, Specifications & Summaries)\n\n    B --> B1[ARCHITECTURE.md]\n    B --> B2[TECHNICAL_DESIGN.md]\n    B --> B3[MULTIBOOT_DESIGN.md]\n    B --> B4[UI_FLOW_ASSESSMENT.md]\n\n    C --> C1[USER_GUIDE.md]\n    C --> C2[TROUBLESHOOTING.md]\n    C --> C3[\"README.md (in project root)\"]\n    C --> C4[README-ENHANCED.md]\n\n    D --> D1[CONTRIBUTING.md]\n    D --> D2[F2FS_LINUX_SPEC.md]\n    D --> D3[WINDOWS11_TO_GO_SPEC.md]\n\n    E --> E1[CHANGELOG.md]\n    E --> E2[RELEASE_NOTES.md]\n    E --> E3[ROADMAP.md]\n    E --> E3_balanced[ROADMAP-BALANCED.md]\n    E --> E4[\"CHECKLIST.md (Old - Review/Archive)\"]\n    E --> E4_balanced[\"CHECKLIST-BALANCED.md (Old - Review/Archive)\"]\n    E --> E5[PRODUCTION_BUILD.md]\n    E --> E6[\"Initial-Planning-exfat-ntfs-addition-....md (Review/Archive)\"]\n\n    F --> F1[F2FS_BTRFS_TEST_PLAN.md]\n    F --> F2[IMPLEMENTATION_SUMMARY.md]\n\n    %% New Checklist Location\n    ProjectRoot[\"/ (Project Root)\"] --> G(Checklists Directory @ /checklists)\n    G --> G1[\"RELEASE_CHECKLIST_20250601_050714.md (New)\"]\n```",
+  "metadata": {
+    "uuid": "c1a9b8d7-0e3c-4f2a-b12f-5e8d7c6a5b4e",
+    "type": "DocumentationMapMermaid",
+    "project": "WowUSB",
+    "file_path": "/home/robin/CascadeProjects/WowUSB/docs/DOCUMENTATION_MAP.md",
+    "timestamp": "2025-06-01T05:07:14-04:00"
+  }
+}
+```
