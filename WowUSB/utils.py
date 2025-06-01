@@ -258,17 +258,48 @@ def determine_target_parameters(install_mode, target_media):
 
 def check_is_target_device_busy(device):
     """
-    :param device:
-    :return:
+    Check if a device or any of its partitions are mounted
+    
+    Args:
+        device (str): Path to the device (e.g., /dev/sdX)
+        
+    Returns:
+        int: 0 if not busy, 1 if busy and couldn't unmount
     """
-    mount = subprocess.run("mount", stdout=subprocess.PIPE).stdout.decode("utf-8").strip()
-    if re.findall(device, mount) != []:
-        mounts = re.findall(rf'{device}\S*', mount)
-        print_with_color(_("Warning: The following partitions will be unmounted: {0}").format(mounts), "yellow")
-        for partition in mounts:
-            if subprocess.run(["umount", partition]).returncode:
-                return 1
-    return 0
+    if not device:
+        return 0
+        
+    try:
+        # Get the device name without /dev/ prefix
+        dev_name = os.path.basename(device)
+        if not dev_name:
+            return 0
+            
+        # Get the mount information
+        mount_output = subprocess.run("mount", capture_output=True, text=True).stdout.strip()
+        
+        # Find all mounted partitions for this device
+        mounted_partitions = []
+        for line in mount_output.split('\n'):
+            if f"/{dev_name}" in line:
+                mount_point = line.split(' ')[2]  # Third field is the mount point
+                mounted_partitions.append(mount_point)
+        
+        # If any partitions are mounted, try to unmount them
+        if mounted_partitions:
+            print_with_color(_("Warning: The following partitions will be unmounted: {0}")
+                           .format(mounted_partitions), "yellow")
+            for partition in mounted_partitions:
+                try:
+                    subprocess.run(["umount", partition], check=True)
+                except subprocess.CalledProcessError:
+                    print_with_color(_("Error: Failed to unmount {0}").format(partition), "red")
+                    return 1
+        
+        return 0
+    except Exception as e:
+        print_with_color(_("Error checking device status: {0}").format(str(e)), "red")
+        return 1
 
 
 def check_source_and_target_not_busy(install_mode, source_media, target_device, target_partition):
@@ -402,6 +433,58 @@ def get_size(path):
     return total_size
 
 
+def list_available_devices():
+    """
+    List all available storage devices and their partitions
+    
+    Returns:
+        list: A list of dictionaries containing device information
+    """
+    import json
+    import subprocess
+    
+    try:
+        # Use lsblk to get device information in JSON format
+        result = subprocess.run(
+            ["lsblk", "-J", "-o", "NAME,MODEL,SIZE,TYPE,MOUNTPOINT,FSTYPE,LABEL"],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            raise Exception(f"Failed to list devices: {result.stderr}")
+            
+        devices_data = json.loads(result.stdout)
+        
+        # Filter out only disk devices (not partitions, loop devices, etc.)
+        disks = [d for d in devices_data.get('blockdevices', []) 
+                if d.get('type') == 'disk' and not d.get('name', '').startswith(('loop', 'sr', 'ram'))]
+        
+        # Process each disk to get its partitions
+        for disk in disks:
+            disk['device'] = f"/dev/{disk['name']}"
+            disk['partitions'] = []
+            
+            # Get partitions for this disk
+            for child in disk.get('children', []):
+                if child.get('type') == 'part':
+                    part_info = {
+                        'name': f"/dev/{child['name']}",
+                        'size': child.get('size', 'N/A'),
+                        'fstype': child.get('fstype', ''),
+                        'label': child.get('label', ''),
+                        'mountpoint': child.get('mountpoint', '')
+                    }
+                    disk['partitions'].append(part_info)
+        
+        return disks
+        
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse device information: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error listing devices: {str(e)}")
+
+
 def check_kill_signal():
     """
     Ok, you may asking yourself, what the f**k is this, and why is it called everywhere. Let me explain
@@ -412,10 +495,10 @@ def check_kill_signal():
     Everyone goes to home happy and user is left with wrecked pendrive (just joking, next thing called by gui is cleanup)
     """
     if gui is not None:
-        if gui.kill:
-            raise sys.exit()
+        gui.check_kill_signal()
+        time.sleep(0.1)
 
-# noinspection DuplicatedCode
+
 def update_policy_to_allow_for_running_gui_as_root(path):
     dom = parseString(
         "<?xml version=\"1.0\" ?>"
