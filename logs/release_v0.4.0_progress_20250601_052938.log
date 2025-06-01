@@ -8,7 +8,20 @@
 - [x] Created and switched to release branch `release/v0.4.0` from `master`
   - Previous commit: 158712d (Project reorganization: Move documentation to docs/, create release checklist, and add project plan)
   - Current branch: release/v0.4.0
-  - Current version in setup.py: 0.3.0 (to be updated to 0.4.0)
+  - Current version in setup.py: 0.4.0 (updated from 0.3.0)
+
+#### A.2. Version Bumping
+- [x] Updated version in setup.py from 0.3.0 to 0.4.0
+- [x] Added new section to CHANGELOG.md for version 0.4.0
+  - Added entries for Added, Changed, Fixed, Security, Deprecated, and Removed sections
+  - Followed Keep a Changelog format
+- [x] Committed version changes with message: "Bump version to v0.4.0 and update CHANGELOG.md"
+  - Commit hash: 3fa7b67
+
+#### A.3. Documentation Finalization
+- [x] Updated CHANGELOG.md with all changes for v0.4.0
+- [ ] Verify internal links in documentation (next step)
+- [ ] Update RELEASE_NOTES.md (next step)
 
 #### Next Steps:
 1. Proceed with A.2. Final Testing
