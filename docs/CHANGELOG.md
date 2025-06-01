@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-06-01
+
+### Added
+- Comprehensive release checklist for version 0.4.0
+- Documentation reorganization into a dedicated `docs/` directory
+- Mermaid.js documentation map for better project navigation
+- Detailed project reorganization plan
+- Logging system for tracking hKG updates and release progress
+
+### Changed
+- Moved all documentation files from project root to `docs/` directory
+- Updated internal references to documentation files
+- Improved project structure for better maintainability
+- Enhanced README.md with updated file locations and project information
+
+### Fixed
+- Documentation links after file reorganization
+- Potential path resolution issues in documentation references
+
+### Security
+- Added security scanning to the release checklist
+- Documented security best practices for release process
+
+### Deprecated
+- Old documentation files in the root directory (now moved to `docs/`)
+- Previous checklists (archived in `docs/` with "(Old - Review/Archive)" suffix)
+
+### Removed
+- Duplicate documentation files from root directory (now in `docs/`)
+  
+### Fixed
+- Various documentation typos and inaccuracies
+
+### Security
+- Added security scanning to release process
+- Documented security considerations for release
+
+## [0.3.0] - 2025-05-19
+
 ## [0.3.0] - 2025-05-19
 
 ### Added

@@ -123,7 +123,7 @@ class PostInstallCommand(install):
 
 setup(
     name='WowUSB-DS9',
-    version='0.3.0',
+    version='0.4.0',
     description='Create bootable Windows USB drives with support for large files and Windows-To-Go',
     long_description=long_description,
     long_description_content_type='text/markdown',
