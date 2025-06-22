@@ -73,42 +73,52 @@ def init(from_cli=True, install_mode=None, source_media=None, target_media=None,
     parser = None
 
     if from_cli:
-        parser = setup_arguments()
-        args = parser.parse_args()
+        # Get the parsed arguments
+        args = setup_arguments()
+        
+        # Set parser to None since we don't need it after this point
+        parser = None
 
-        if args.about:
+        if hasattr(args, 'about') and args.about:
             print_application_info()
             return 0
 
-        if args.device:
-            install_mode = "device"
-        elif args.partition:
-            install_mode = "partition"
+        # Set install_mode from the already parsed arguments
+        if hasattr(args, 'install_mode'):
+            install_mode = args.install_mode
         else:
-            utils.print_with_color(_("You need to specify installation type (--device or --partition)"))
-            return 1
+            if args.device:
+                install_mode = "device"
+            elif args.partition:
+                install_mode = "partition"
+            else:
+                utils.print_with_color(_("You need to specify installation type (--device or --partition)"))
+                return 1
 
-        #: source_media may be a optical disk drive or a disk image
+        #: source_media may be an optical disk drive or a disk image
         source_media = args.source
         #: target_media may be an entire usb storage device or just a partition
         target_media = args.target
 
-        workaround_bios_boot_flag = args.workaround_bios_boot_flag
+        workaround_bios_boot_flag = getattr(args, 'workaround_bios_boot_flag', False)
         
-        skip_legacy_bootloader = args.workaround_skip_grub
+        skip_legacy_bootloader = getattr(args, 'workaround_skip_grub', False)
 
-        target_filesystem_type = args.target_filesystem
+        target_filesystem_type = getattr(args, 'target_filesystem', 'FAT')
 
-        filesystem_label = args.label
+        filesystem_label = getattr(args, 'label', DEFAULT_NEW_FS_LABEL)
 
-        verbose = args.verbose
+        verbose = getattr(args, 'verbose', False)
 
-        no_color = args.no_color
+        no_color = getattr(args, 'no_color', True)
 
-        debug = args.debug
+        debug = getattr(args, 'debug', False)
 
-        #: Add Windows-To-Go argument presence
-        setattr(parser, 'wintogo', getattr(args, 'wintogo', False))
+        
+        # Set the wintogo flag if it exists
+        wintogo = getattr(args, 'wintogo', False)
+        if parser is not None:
+            setattr(parser, 'wintogo', wintogo)
 
     utils.no_color = no_color
     utils.verbose = verbose
@@ -1003,45 +1013,82 @@ def cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_m
         utils.print_with_color(_("The target device should be bootable now"), "green")
 
 
-def setup_arguments():
+def create_parser():
     """
-    Set up command line arguments
-
+    Create and return the argument parser
+    
     Returns:
-        argparse.Namespace: Parsed command line arguments
+        argparse.ArgumentParser: The configured argument parser
     """
     parser = argparse.ArgumentParser(description=_("Create a bootable Windows USB drive from an ISO or DVD"))
 
     # Source arguments
-    parser.add_argument("--device", "-d", action="store_true", help=_("Device mode: Create a bootable USB drive from an ISO or DVD"))
-    parser.add_argument("--partition", "-p", action="store_true", help=_("Partition mode: Install Windows to an existing partition"))
+    parser.add_argument("--device", "-d", action="store_true", 
+                        help=_("Device mode: Create a bootable USB drive from an ISO or DVD"))
+    parser.add_argument("--partition", "-p", action="store_true", 
+                        help=_("Partition mode: Install Windows to an existing partition"))
 
     # Target arguments
-    parser.add_argument("--target-filesystem", "-t", choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], default="AUTO",
+    parser.add_argument("--target-filesystem", "-t", 
+                        choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], 
+                        default="AUTO",
                         help=_("Target filesystem type (default: AUTO)"))
 
     # Windows-To-Go option
-    parser.add_argument("--wintogo", "-w", action="store_true", help=_("Create a Windows-To-Go installation"))
-
+    parser.add_argument("--wintogo", "-w", action="store_true", 
+                        help=_("Create a Windows-To-Go installation"))
+    
     # Linux persistence option
     parser.add_argument("--persistence", "-P", type=int, metavar="SIZE",
                         help=_("Create a persistence partition or file of SIZE MB (Linux only)"))
 
+    # Multi-boot options
+    parser.add_argument("--multiboot", "-m", action="store_true",
+                        help=_("Multi-boot mode: Create a multi-boot USB drive"))
+    
+    # OS options
+    parser.add_argument("--add-os", "-a", action="append", nargs=4,
+                        metavar=("TYPE", "ISO", "SIZE_GB", "FILESYSTEM"),
+                        help=_("Add OS (type, ISO path, size in GB, filesystem)"))
+    
+    # Shared partition options
+    parser.add_argument("--shared-size", "-s", type=int, default=4,
+                        help=_("Shared partition size in GB"))
+    parser.add_argument("--shared-filesystem", "-f", default="EXFAT",
+                        help=_("Shared partition filesystem"))
+
     # Other options
-    parser.add_argument("--list-devices", "-l", action="store_true", help=_("List available devices"))
-    parser.add_argument("--verbose", "-v", action="store_true", help=_("Enable verbose output"))
-    parser.add_argument("--no-color", "-n", action="store_true", help=_("Disable colored output"))
-    parser.add_argument("--for-gui", "-g", action=argparse.SUPPRESS)
+    parser.add_argument("--list-devices", "-l", action="store_true", 
+                        help=_("List available devices"))
+    parser.add_argument("--verbose", "-v", action="store_true", 
+                        help=_("Enable verbose output"))
+    parser.add_argument("--no-color", "-n", action="store_true", 
+                        help=_("Disable colored output"))
+    parser.add_argument("--for-gui", "-g", action="store_true", 
+                        help=argparse.SUPPRESS)
 
     # Positional arguments
-    parser.add_argument("source", nargs="?", help=_("Source ISO or DVD path"))
-    parser.add_argument("target", nargs="?", help=_("Target device or partition"))
+    parser.add_argument("source", nargs="?", 
+                        help=_("Source ISO or DVD path"))
+    parser.add_argument("target", nargs="?", 
+                        help=_("Target device or partition"))
+    
+    return parser
 
-    # Parse arguments
+def setup_arguments():
+    """
+    Set up and parse command line arguments
+
+    Returns:
+        argparse.Namespace: Parsed command line arguments
+    """
+    parser = create_parser()
     args = parser.parse_args()
 
     # Set install mode
-    if args.device:
+    if args.multiboot:
+        args.install_mode = "multiboot"
+    elif args.device:
         args.install_mode = "device"
     elif args.partition:
         args.install_mode = "partition"
@@ -1059,7 +1106,7 @@ def setup_arguments():
         args.install_mode = "device"
 
     # Set target partition
-    if args.install_mode == "device":
+    if args.install_mode == "device" or args.install_mode == "multiboot":
         args.target_partition = args.target + "1" if args.target else None
     else:
         args.target_partition = args.target
@@ -1081,119 +1128,7 @@ def setup_arguments():
     return args
 
 
-def setup_multiboot_arguments(parser):
-    """
-    Set up multi-boot command line arguments
-    
-    Args:
-        parser (argparse.ArgumentParser): Argument parser
-        
-    Returns:
-        argparse.ArgumentParser: Updated argument parser
-    """
-    # Multi-boot mode
-    parser.add_argument("--multiboot", "-m", action="store_true",
-                        help=_("Multi-boot mode: Create a multi-boot USB drive"))
-    
-    # OS options
-    parser.add_argument("--add-os", "-a", action="append", nargs=4,
-                        metavar=("TYPE", "ISO", "SIZE_GB", "FILESYSTEM"),
-                        help=_("Add OS (type, ISO path, size in GB, filesystem)"))
-    
-    # Shared partition options
-    parser.add_argument("--shared-size", "-s", type=int, default=4,
-                        help=_("Shared partition size in GB"))
-    parser.add_argument("--shared-filesystem", "-f", default="EXFAT",
-                        help=_("Shared partition filesystem"))
-    
-    return parser
-
-
-# Update setup_arguments function to include multi-boot arguments
-original_setup_arguments = setup_arguments
-
-def setup_arguments():
-    """
-    Set up command line arguments
-    
-    Returns:
-        argparse.Namespace: Parsed command line arguments
-    """
-    # Get original parser
-    parser = argparse.ArgumentParser(description=_("Create a bootable Windows USB drive from an ISO or DVD"))
-    
-    # Source arguments
-    parser.add_argument("--device", "-d", action="store_true", help=_("Device mode: Create a bootable USB drive from an ISO or DVD"))
-    parser.add_argument("--partition", "-p", action="store_true", help=_("Partition mode: Install Windows to an existing partition"))
-    
-    # Target arguments
-    parser.add_argument("--target-filesystem", "-t", choices=["FAT", "NTFS", "EXFAT", "F2FS", "BTRFS", "AUTO"], default="AUTO",
-                        help=_("Target filesystem type (default: AUTO)"))
-    
-    # Windows-To-Go option
-    parser.add_argument("--wintogo", "-w", action="store_true", help=_("Create a Windows-To-Go installation"))
-    
-    # Linux persistence option
-    parser.add_argument("--persistence", "-P", type=int, metavar="SIZE",
-                        help=_("Create a persistence partition or file of SIZE MB (Linux only)"))
-    
-    # Multi-boot options
-    setup_multiboot_arguments(parser)
-    
-    # Other options
-    parser.add_argument("--list-devices", "-l", action="store_true", help=_("List available devices"))
-    parser.add_argument("--verbose", "-v", action="store_true", help=_("Enable verbose output"))
-    parser.add_argument("--no-color", "-n", action="store_true", help=_("Disable colored output"))
-    parser.add_argument("--for-gui", "-g", action=argparse.SUPPRESS)
-    
-    # Positional arguments
-    parser.add_argument("source", nargs="?", help=_("Source ISO or DVD path"))
-    parser.add_argument("target", nargs="?", help=_("Target device or partition"))
-    
-    # Parse arguments
-    args = parser.parse_args()
-    
-    # Set install mode
-    if args.multiboot:
-        args.install_mode = "multiboot"
-    elif args.device:
-        args.install_mode = "device"
-    elif args.partition:
-        args.install_mode = "partition"
-    elif args.target and not os.path.exists(args.target):
-        # If target doesn't exist, assume it's a device
-        args.install_mode = "device"
-    elif args.target and os.path.exists(args.target):
-        # If target exists, check if it's a device or partition
-        if utils.is_block_device(args.target) and not utils.is_partition(args.target):
-            args.install_mode = "device"
-        else:
-            args.install_mode = "partition"
-    else:
-        # Default to device mode
-        args.install_mode = "device"
-    
-    # Set target partition
-    if args.install_mode == "device" or args.install_mode == "multiboot":
-        args.target_partition = args.target + "1" if args.target else None
-    else:
-        args.target_partition = args.target
-        args.target = None
-    
-    # Validate Windows-To-Go option
-    if args.wintogo and args.install_mode != "device":
-        parser.error(_("Windows-To-Go requires device mode"))
-    
-    # Validate persistence option
-    if args.persistence is not None:
-        if args.persistence < 512:
-            parser.error(_("Persistence size must be at least 512MB"))
-        if args.wintogo:
-            parser.error(_("Persistence is not compatible with Windows-To-Go"))
-        if args.target_filesystem not in ["F2FS", "BTRFS", "AUTO"]:
-            parser.error(_("Persistence requires F2FS or BTRFS filesystem"))
-    
-    # Validate multi-boot options
+# setup_arguments now includes all argument definitions directly
 
 def main(args, temp_dir=None):
     """
@@ -1279,8 +1214,7 @@ def main(args, temp_dir=None):
     
     return args
 
-# Replace original setup_arguments with updated version
-setup_arguments.__doc__ = original_setup_arguments.__doc__
+# setup_arguments docstring is already preserved by the decorator
 
 
 class ReportCopyProgress(threading.Thread):
@@ -1335,26 +1269,55 @@ class ReportCopyProgress(threading.Thread):
 
 
 def run():
+    # Get the parsed command line arguments
+    args = setup_arguments()
+    
+    # If list-devices is specified, handle it and exit
+    if args.list_devices:
+        try:
+            # Import the device listing function from WowUSB.utils
+            from WowUSB.utils import list_available_devices
+            devices = list_available_devices()
+            print("\nAvailable storage devices:")
+            print("-" * 50)
+            for dev in devices:
+                print(f"Device: {dev['device']}")
+                print(f"  Model: {dev.get('model', 'N/A')}")
+                print(f"  Size: {dev.get('size', 'N/A')}")
+                print(f"  Type: {dev.get('type', 'N/A')}")
+                if 'partitions' in dev:
+                    print("  Partitions:")
+                    for part in dev['partitions']:
+                        print(f"    {part['name']}: {part.get('size', 'N/A')} {part.get('fstype', '')} {part.get('label', '')}")
+                print("-" * 50)
+            return 0
+        except Exception as e:
+            print(f"Error listing devices: {str(e)}")
+            return 1
+    
+    # For other commands, initialize the application
     result = init()
     if isinstance(result, list) is False:
-        return
-
+        return 1
+        
     source_fs_mountpoint, target_fs_mountpoint, temp_directory, \
         install_mode, source_media, target_media, \
         workaround_bios_boot_flag, skip_legacy_bootloader, target_filesystem_type, \
         new_file_system_label, verbose, debug, parser = result
 
     try:
-        main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media, install_mode, temp_directory,
-             target_filesystem_type, workaround_bios_boot_flag, parser, skip_legacy_bootloader)
+        # Call the main function with the parsed arguments
+        return main(args, temp_dir=temp_directory)
     except KeyboardInterrupt:
-        pass
+        print("\nOperation cancelled by user.")
+        return 1
     except Exception as error:
-        utils.print_with_color(error, "red")
+        utils.print_with_color(f"Error: {str(error)}", "red")
         if debug:
             traceback.print_exc()
-
-    cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_media)
+        return 1
+    finally:
+        cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_media)
 
 
 if __name__ == "__main__":

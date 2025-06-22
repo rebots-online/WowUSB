@@ -1,3 +1,51 @@
+# WowUSB-DS9 v0.4.0 Release Notes
+
+*Release Date: June 1, 2025*
+
+Welcome to WowUSB-DS9 v0.4.0! This release focuses on improving project maintainability, documentation, and the release process. We've reorganized the project structure to make it more intuitive and added comprehensive documentation to help both users and contributors.
+
+## What's New
+
+### Project Reorganization
+- **Centralized Documentation**: All documentation has been moved to a dedicated `docs/` directory for better organization
+- **Structured Checklists**: Added comprehensive release checklists to ensure consistent and reliable releases
+- **Documentation Map**: Created a visual map of all documentation files for easier navigation
+- **Improved File Structure**: Cleaned up the project root by moving non-essential files to appropriate directories
+
+### Enhanced Documentation
+- **Updated CHANGELOG**: Completely revamped following Keep a Changelog standards
+- **Release Process**: Documented the entire release process for maintainers
+- **Developer Guides**: Improved contribution guidelines and technical documentation
+- **User Documentation**: Updated user guides with the new file locations and features
+
+### Release Process Improvements
+- **Automated Version Bumping**: Streamlined version management
+- **Comprehensive Testing**: Added detailed testing procedures to the release checklist
+- **Security Scanning**: Integrated security checks into the release process
+- **Better Logging**: Added structured logging for release activities
+
+## Upgrade Notes
+- The main documentation has been moved to the `docs/` directory. Update any bookmarks or references accordingly.
+- The release process has been formalized - please review the new checklists if you're a maintainer.
+- All documentation links in the codebase have been updated to reflect the new structure.
+
+## Known Issues
+- Some internal links in documentation might need updating if they referenced files that were moved
+- Users with custom scripts that reference documentation files may need to update their paths
+
+## System Requirements
+- Python 3.6 or higher
+- Administrative/root privileges for USB operations
+- Required system packages as listed in the installation guide
+
+## Getting Started
+For new users, please refer to the updated documentation in the `docs/` directory. The main user guide is now located at `docs/USER_GUIDE.md`.
+
+## Feedback and Support
+Please report any issues on our [issue tracker](https://github.com/rebots-online/WowUSB/issues). For support, consult the documentation or open a discussion.
+
+---
+
 # WowUSB-DS9 v0.3.0 Release Notes
 
 *Release Date: May 19, 2025*

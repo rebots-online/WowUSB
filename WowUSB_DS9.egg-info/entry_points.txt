@@ -1,0 +1,5 @@
+[console_scripts]
+wowusb = WowUSB.core:main
+
+[gui_scripts]
+wowusbgui = WowUSB.gui:main

@@ -447,5 +447,8 @@ def run():
     app.MainLoop()
 
 
+def main():
+    run()
+
 if __name__ == "__main__":
     run()

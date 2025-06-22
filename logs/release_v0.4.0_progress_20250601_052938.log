@@ -1,0 +1,59 @@
+# WowUSB v0.4.0 Release Progress Log
+
+## 2025-06-01 05:29:38 -04:00: Release Process Started
+
+### A. Pre-Release Activities
+
+#### A.1. Code Freeze & Branching
+- [x] Created and switched to release branch `release/v0.4.0` from `master`
+  - Previous commit: 158712d (Project reorganization: Move documentation to docs/, create release checklist, and add project plan)
+  - Current branch: release/v0.4.0
+  - Current version in setup.py: 0.4.0 (updated from 0.3.0)
+
+#### A.2. Version Bumping
+- [x] Updated version in setup.py from 0.3.0 to 0.4.0
+- [x] Added new section to CHANGELOG.md for version 0.4.0
+  - Added entries for Added, Changed, Fixed, Security, Deprecated, and Removed sections
+  - Followed Keep a Changelog format
+- [x] Committed version changes with message: "Bump version to v0.4.0 and update CHANGELOG.md"
+  - Commit hash: 3fa7b67
+
+#### A.3. Documentation Finalization
+- [x] Updated CHANGELOG.md with all changes for v0.4.0
+- [ ] Verify internal links in documentation (next step)
+- [ ] Update RELEASE_NOTES.md (next step)
+
+#### Next Steps:
+1. Proceed with A.2. Final Testing
+   - Run unit tests
+   - Run integration tests
+   - Perform user acceptance testing
+   - Execute performance tests
+   - Run security scans
+   - Test on supported platforms
+
+## Log Entries
+
+### 2025-06-01 05:29:38 -04:00
+- Created release branch `release/v0.4.0` from `master`
+- Current branch: `release/v0.4.0`
+- Current HEAD: 158712d (Project reorganization: Move documentation to docs/, create release checklist, and add project plan)
+
+### 2025-06-01 05:29:25 -04:00
+- Committed all pending changes to master before creating release branch
+  - Commit message: "Project reorganization: Move documentation to docs/, create release checklist, and add project plan"
+  - Changes included:
+    - Moved 20 documentation files to docs/ directory
+    - Created checklists/RELEASE_CHECKLIST_20250601_050714.md
+    - Created docs/DOCUMENTATION_MAP.md
+    - Created PROJECT_REORG_PLAN_20250601_050714.md
+    - Created logs/hKG_pending_updates_20250601_052637.log
+
+### 2025-06-01 05:24:45 -04:00
+- Confirmed application is in working state for testing on USB stick
+- Noted hKG (Neo4j and Qdrant) is under maintenance
+- Created local logs for hKG updates to be applied later
+
+### 2025-06-01 05:07:14 -04:00
+- Initial release checklist and documentation reorganization plan created
+- Project reorganization initiated
