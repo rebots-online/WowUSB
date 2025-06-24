@@ -284,6 +284,14 @@ python3 scripts/build_package.py
 ./scripts/create_tarball.sh
 ```
 
+#### Self-Contained Bootable ISO
+Create an ISO image containing the WowUSB-DS9 binaries and data for
+use with virtual machines or optical media:
+
+```shell
+./scripts/create_iso.sh ./dist/wowusb_root wowusb_ds9.iso
+```
+
 ### Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
