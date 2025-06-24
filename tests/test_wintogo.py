@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 import subprocess
+from unittest.mock import MagicMock, patch # Added MagicMock and patch
 
 # Add parent directory to path for importing WowUSB modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -139,14 +140,13 @@ BuildNumber=22000
             subprocess.run = mock_run
             
             # Mock the filesystem handler
-            class MockFsHandler:
-                @classmethod
-                def format_partition(cls, partition, label):
-                    return 0
+            mock_fs_handler_instance = MagicMock()
+            mock_fs_handler_instance.parted_fs_type.return_value = "ntfs" # or whatever is appropriate
+            mock_fs_handler_instance.format_partition.return_value = 0
             
             # Mock the get_filesystem_handler function
             original_get_handler = core.fs_handlers.get_filesystem_handler
-            core.fs_handlers.get_filesystem_handler = lambda x: MockFsHandler
+            core.fs_handlers.get_filesystem_handler = lambda x: mock_fs_handler_instance # Return an instance
             
             # Test partition layout creation
             result = core.create_wintogo_partition_layout("/dev/sdX", "NTFS", "Windows")

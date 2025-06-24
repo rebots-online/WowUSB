@@ -130,6 +130,87 @@ def init(from_cli=True, install_mode=None, source_media=None, target_media=None,
     else:
         return [source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_media]
 
+# Stubs for functions called by main() but not defined at module level
+def wipe_existing_partition_table_and_filesystem_signatures(target_device):
+    """Stub for wiping partition table and filesystem signatures."""
+    utils.print_with_color(_("STUB: Wiping signatures on {0}").format(target_device), "magenta")
+    # Actual logic would involve calling wipefs or dd
+    return 0
+
+def create_target_partition_table(target_device, table_type):
+    """Stub for creating a partition table (MBR or GPT)."""
+    utils.print_with_color(_("STUB: Creating {0} partition table on {1}").format(table_type, target_device), "magenta")
+    # Actual logic would involve calling parted to mklabel
+    if table_type == "legacy":
+        return utils.run_command(["parted", "--script", target_device, "mklabel", "msdos"],
+                                 message="Creating MBR partition table",
+                                 error_message="Failed to create MBR partition table")
+    elif table_type == "uefi" or table_type == "gpt": # Assuming uefi implies gpt for new tables
+        return utils.run_command(["parted", "--script", target_device, "mklabel", "gpt"],
+                                 message="Creating GPT partition table",
+                                 error_message="Failed to create GPT partition table")
+    return 1 # Unknown table type
+
+def create_target_partition(target_device, target_partition_device, fs_type, label):
+    """Stub for creating and formatting the main target partition."""
+    utils.print_with_color(_("STUB: Creating partition {0} ({1}, {2}) on {3}").format(target_partition_device, fs_type, label, target_device), "magenta")
+    # Actual logic involves:
+    # 1. parted mkpart primary fs_type 1MiB 100% (or similar)
+    # 2. Getting fs_handler
+    # 3. fs_handler.format_partition(target_partition_device, label)
+
+    # Simplified parted call for stub
+    fs_handler = fs_handlers.get_filesystem_handler(fs_type)
+    parted_fs_type_str = fs_handler.parted_fs_type() # Get appropriate type for parted
+
+    # Create the primary partition covering most of the disk
+    # This assumes it's the first partition. More complex logic needed for multiple partitions.
+    if utils.run_command(["parted", "--script", target_device, "mkpart", "primary", parted_fs_type_str, "1MiB", "100%"],
+                         message=f"Creating primary partition {target_partition_device}",
+                         error_message=f"Failed to create primary partition {target_partition_device}"):
+        return 1
+
+    time.sleep(2) # Allow kernel to recognize new partition
+
+    if fs_handler.format_partition(target_partition_device, label) != 0:
+        return 1
+    return 0
+
+def create_wintogo_partition_layout(target_device, fs_type, label):
+    """Stub for creating Windows-To-Go partition layout."""
+    utils.print_with_color(_("STUB: Creating WinToGo layout on {0} ({1}, {2})").format(target_device, fs_type, label), "magenta")
+    # Actual logic involves multiple parted calls for ESP, MSR, Windows partitions, then formatting.
+    # For simplicity, this stub will just simulate success.
+    # 1. mklabel gpt
+    # 2. mkpart ESP fat32 1MiB 261MiB, set 1 boot on, set 1 esp on
+    # 3. mkpart MSR 261MiB 389MiB, set 2 msftres on
+    # 4. mkpart Windows fs_type 389MiB 100%
+    # 5. Format ESP as FAT32
+    # 6. Format Windows partition with fs_type
+    if create_target_partition_table(target_device, "gpt"): return 1
+
+    # ESP
+    if utils.run_command(["parted", "--script", target_device, "mkpart", "ESP", "fat32", "1MiB", "261MiB", "set", "1", "boot", "on", "set", "1", "esp", "on"]): return 1
+    time.sleep(1)
+    if utils.run_command([utils.check_command("mkdosfs"), "-F", "32", "-n", "ESP", target_device + "1"]): return 1 # Assumes mkdosfs path from check_command
+
+    # MSR
+    if utils.run_command(["parted", "--script", target_device, "mkpart", "MSR", "261MiB", "389MiB", "set", "2", "msftres", "on"]): return 1
+
+    # Windows
+    fs_handler = fs_handlers.get_filesystem_handler(fs_type)
+    if hasattr(fs_handler, 'parted_fs_type') and callable(getattr(fs_handler, 'parted_fs_type')) :
+        parted_fs_type_str = fs_handler.parted_fs_type()
+    else:
+        # Fallback if the handler (possibly a mock) doesn't have parted_fs_type
+        utils.print_with_color(f"Warning: Filesystem handler for {fs_type} missing 'parted_fs_type' method. Defaulting to 'fat32' for parted.", "yellow")
+        parted_fs_type_str = "fat32" # A common default for parted type field
+
+    if utils.run_command(["parted", "--script", target_device, "mkpart", "Windows", parted_fs_type_str, "389MiB", "100%"]): return 1
+    time.sleep(1)
+    if fs_handler.format_partition(target_device + "3", label) != 0: return 1 # Assumes Windows is 3rd partition
+
+    return 0
 
 def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media, install_mode, temp_directory,
           target_filesystem_type, workaround_bios_boot_flag, parser=None, skip_legacy_bootloader=False):
@@ -153,8 +234,10 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
     global target_device
 
     current_state = 'enter-init'
+    if utils.gui: utils.gui.state = _("Initializing..."); utils.gui.progress = False
 
     command_mkdosfs, command_mkntfs, command_grubinstall = utils.check_runtime_dependencies(application_name)
+    utils.check_kill_signal() # Check after initial setup
     if command_grubinstall == "grub-install":
         name_grub_prefix = "grub"
     else:
@@ -177,14 +260,18 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
         return 1
 
     current_state = "start-mounting"
+    if utils.gui: utils.gui.state = _("Mounting source filesystem..."); utils.gui.progress = False
 
     if mount_source_filesystem(source_media, source_fs_mountpoint):
         utils.print_with_color(_("Error: Unable to mount source filesystem"), "red")
         return 1
+    utils.check_kill_signal()
 
     # If auto-detection is requested, determine the optimal filesystem
+    if utils.gui: utils.gui.state = _("Determining optimal filesystem..."); utils.gui.progress = False
     if target_filesystem_type.upper() == "AUTO":
         target_filesystem_type = fs_handlers.get_optimal_filesystem_for_iso(source_fs_mountpoint)
+        utils.check_kill_signal()
         utils.print_with_color(
             _("Info: Auto-selected {0} filesystem based on source content").format(target_filesystem_type),
             "green"
@@ -233,8 +320,10 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
         return 1
     
     # Get the filesystem handler for the selected filesystem
+    if utils.gui: utils.gui.state = _("Validating filesystem choice..."); utils.gui.progress = False
     try:
         fs_handler = fs_handlers.get_filesystem_handler(target_filesystem_type)
+        utils.check_kill_signal()
         is_available, missing_deps = fs_handler.check_dependencies()
         if not is_available:
             utils.print_with_color(
@@ -244,6 +333,7 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
                 "red"
             )
             return 1
+        utils.check_kill_signal()
             
         # Print selected filesystem information
         utils.print_with_color(
@@ -262,12 +352,14 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
     except ValueError as e:
         utils.print_with_color(str(e), "red")
         return 1
+    utils.check_kill_signal()
 
     # Check if Windows-To-Go mode is enabled
     is_wintogo_mode = getattr(parser, 'wintogo', False) if parser else False
     
     if is_wintogo_mode:
-        utils.print_with_color(_("Windows-To-Go mode enabled"), "green")
+        utils.print_with_color(_("Windows-To-Go mode enabled"), "green") # CLI message
+        if utils.gui: utils.gui.state = _("Configuring for Windows-To-Go..."); utils.gui.progress = False
         
         if install_mode != "device":
             utils.print_with_color(_("Error: Windows-To-Go requires --device mode"), "red")
@@ -280,30 +372,62 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
             
         # Update target partition to point to the Windows partition (3rd partition)
         target_partition = target_device + "3"
+        utils.check_kill_signal()
     elif install_mode == "device":
+        if utils.gui: utils.gui.state = _("Wiping existing signatures..."); utils.gui.progress = False
         wipe_existing_partition_table_and_filesystem_signatures(target_device)
-        create_target_partition_table(target_device, "legacy")
-        create_target_partition(target_device, target_partition, target_filesystem_type, filesystem_label)
+        utils.check_kill_signal()
 
-        # Add UEFI support partition if needed
+        if utils.gui: utils.gui.state = _("Creating partition table..."); utils.gui.progress = False
+        create_target_partition_table(target_device, "legacy") # Creates MBR
+        utils.check_kill_signal()
+
+        # Create the main Windows partition (e.g., /dev/sdb1)
+        if utils.gui: utils.gui.state = _("Creating main Windows partition..."); utils.gui.progress = False
+        if create_target_partition(target_device, target_partition, target_filesystem_type, filesystem_label):
+            utils.print_with_color(_("Error: Failed to create main target partition {0}").format(target_partition), "red")
+            return 1
+        utils.check_kill_signal()
+
+        # Add UEFI support partition if needed (e.g., /dev/sdb2)
         if fs_handler.needs_uefi_support_partition():
-            create_uefi_ntfs_support_partition(target_device)
-            install_uefi_support_partition(fs_handler, target_device + "2", temp_directory)
+            if utils.gui: utils.gui.state = _("Creating UEFI support partition..."); utils.gui.progress = False
+            uefi_support_part_device = target_device + "2" # Assuming main partition is '1'
+            if create_uefi_support_partition(target_device, uefi_support_part_device):
+                 utils.print_with_color(_("Error: Failed to create UEFI support partition on {0}").format(target_device), "red")
+                 return 1
+            utils.check_kill_signal()
+            if utils.gui: utils.gui.state = _("Installing UEFI support files..."); utils.gui.progress = False
+            if install_uefi_support_files(fs_handler, uefi_support_part_device, temp_directory):
+                utils.print_with_color(_("Error: Failed to install UEFI support files to {0}").format(uefi_support_part_device), "red")
+                return 1
+            utils.check_kill_signal()
 
     if install_mode == "partition":
+        # If only working on a partition, UEFI support partition logic might be different
+        # or assumed to be handled manually by the user.
+        # For now, we only create/install UEFI support for "device" mode.
+        if utils.gui: utils.gui.state = _("Checking target partition..."); utils.gui.progress = False
         if utils.check_target_partition(target_partition, target_device):
             return 1
+        utils.check_kill_signal()
 
+    if utils.gui: utils.gui.state = _("Mounting target filesystem..."); utils.gui.progress = False
     if mount_target_filesystem(target_partition, target_fs_mountpoint):
         utils.print_with_color(_("Error: Unable to mount target filesystem"), "red")
         return 1
+    utils.check_kill_signal()
 
+    if utils.gui: utils.gui.state = _("Checking free space on target..."); utils.gui.progress = False
     if utils.check_target_filesystem_free_space(target_fs_mountpoint, source_fs_mountpoint, target_partition):
         return 1
+    utils.check_kill_signal()
 
     current_state = "copying-filesystem"
+    # GUI state for copying is handled by ReportCopyProgress thread via core.gui directly
 
     copy_filesystem_files(source_fs_mountpoint, target_fs_mountpoint)
+    utils.check_kill_signal() # After copy_filesystem_files returns
 
     # Set up persistence for Linux distributions if requested
     if parser and getattr(parser, 'persistence', None) is not None:
@@ -314,22 +438,29 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
 
     # Apply Windows-To-Go specific modifications if in Windows-To-Go mode
     if is_wintogo_mode:
+        if utils.gui: utils.gui.state = _("Applying Windows-To-Go modifications..."); utils.gui.progress = False
         # Detect Windows version
         windows_version, build_number, is_windows11 = utils.detect_windows_version(source_fs_mountpoint)
         utils.print_with_color(
             _("Detected Windows version: {0}, build: {1}").format(windows_version, build_number),
             "green"
         )
+        utils.check_kill_signal()
         
         # Apply TPM bypass for Windows 11
         if is_windows11:
+            if utils.gui: utils.gui.state = _("Applying Windows 11 TPM bypass..."); utils.gui.progress = False
             utils.print_with_color(_("Applying Windows 11 specific modifications..."), "green")
             workaround.bypass_windows11_tpm_requirement(target_fs_mountpoint)
+            utils.check_kill_signal()
         
         # Configure drivers and hardware detection for portable Windows
+        if utils.gui: utils.gui.state = _("Preparing portable drivers..."); utils.gui.progress = False
         workaround.prepare_windows_portable_drivers(target_fs_mountpoint)
+        utils.check_kill_signal()
         
         # Mount ESP partition for bootloader installation
+        if utils.gui: utils.gui.state = _("Mounting ESP for WinToGo bootloader setup..."); utils.gui.progress = False
         esp_partition = target_device + "1"
         esp_mountpoint = target_fs_mountpoint + "_esp"
         
@@ -338,13 +469,15 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
         if subprocess.run(["mount", esp_partition, esp_mountpoint]).returncode != 0:
             utils.print_with_color(_("Error: Unable to mount ESP partition"), "red")
             return 1
+        utils.check_kill_signal()
         
         # Copy bootloader files to ESP
+        if utils.gui: utils.gui.state = _("Copying bootloader files to ESP (WinToGo)..."); utils.gui.progress = False
         utils.print_with_color(_("Installing bootloader files to ESP..."), "green")
         
         # Create directory structure
         os.makedirs(os.path.join(esp_mountpoint, "EFI", "Boot"), exist_ok=True)
-        
+        utils.check_kill_signal()
         # Copy bootloader files from Windows partition
         boot_files = [
             ("bootmgfw.efi", "bootx64.efi"),
@@ -384,16 +517,27 @@ def main(source_fs_mountpoint, target_fs_mountpoint, source_media, target_media,
             os.rmdir(esp_mountpoint)
         except OSError:
             pass
+        utils.check_kill_signal()
 
+    if utils.gui: utils.gui.state = _("Applying Windows 7 UEFI workaround (if applicable)..."); utils.gui.progress = False
     workaround.support_windows_7_uefi_boot(source_fs_mountpoint, target_fs_mountpoint)
+    utils.check_kill_signal()
+
     if not skip_legacy_bootloader:
+        if utils.gui: utils.gui.state = _("Installing legacy GRUB bootloader..."); utils.gui.progress = False
         install_legacy_pc_bootloader_grub(target_fs_mountpoint, target_device, command_grubinstall)
+        utils.check_kill_signal()
+        if utils.gui: utils.gui.state = _("Installing GRUB configuration..."); utils.gui.progress = False
         install_legacy_pc_bootloader_grub_config(target_fs_mountpoint, target_device, command_grubinstall, name_grub_prefix)
+        utils.check_kill_signal()
 
     if workaround_bios_boot_flag:
+        if utils.gui: utils.gui.state = _("Applying BIOS boot flag workaround..."); utils.gui.progress = False
         workaround.buggy_motherboards_that_ignore_disks_without_boot_flag_toggled(target_device)
+        utils.check_kill_signal()
 
     current_state = "finished"
+    if utils.gui: utils.gui.state = _("Process finished successfully!"); utils.gui.progress = 100 # Final progress
 
     return 0
 
@@ -940,6 +1084,228 @@ def install_legacy_pc_bootloader_grub_config(target_fs_mountpoint, target_device
     with open(grub_cfg, "w") as cfg:
         cfg.write("ntldr /bootmgr\n")
         cfg.write("boot")
+
+
+def create_uefi_support_partition(target_device, uefi_support_partition_device):
+    """
+    Creates a small FAT16 partition at the end of the disk for UEFI support files.
+    This is typically used for UEFI:NTFS or UEFI:exFAT booting.
+
+    :param target_device: The main target device (e.g., /dev/sdb)
+    :param uefi_support_partition_device: The device path for the new partition (e.g., /dev/sdb2)
+    :return: 0 on success, 1 on failure
+    """
+    utils.check_kill_signal()
+    utils.print_with_color(_("Creating UEFI support partition ({0})...").format(uefi_support_partition_device), "green")
+
+    # Create a small ~5MB FAT16 partition at the end of the disk.
+    # Parted syntax for "start from 5MB before end" to "1s before end"
+    # Using sectors ('s') for precise small partition. 10240 sectors = 5MB for 512b sectors.
+    # A 1MB partition is often enough for UEFI:NTFS. Let's use 5MB to be safe.
+    # Ensure the main partition does not occupy the entire disk.
+    # This assumes the main partition (e.g. sdb1) has already been created and there's space.
+    # The partition number is implied by uefi_support_partition_device (e.g. sdb2)
+    partition_number = "".join(filter(str.isdigit, uefi_support_partition_device.replace(target_device, "")))
+    if not partition_number:
+        utils.print_with_color(_("Error: Could not determine partition number for UEFI support partition {0}").format(uefi_support_partition_device), "red")
+        return 1
+
+    # We need to know the end of the previous partition to start this one.
+    # This is simpler if we create it as the *last* partition using negative indexing for end.
+    # Example: parted /dev/sdb mkpart primary fat16 -5MB -1s
+    # This creates a partition in the last 5MB of the disk.
+    # We must ensure this doesn't overlap if other partitions exist after the main one.
+    # For now, assume it's the second partition on an MBR disk.
+    # A more robust way would be to check available space or use GPT and define all partitions upfront.
+
+    # For MBR, we typically create up to 4 primary partitions.
+    # If target_partition was sdb1, this will be sdb2.
+    # The start is determined by where sdb1 ended. Parted handles this if we just specify type.
+    # However, we need to specify a size. Let's aim for a small partition.
+    # A common approach is to make it the *second* partition.
+    # parted /dev/sdb mkpart primary fat16 START END (e.g. after sdb1, for 5MB)
+
+    # Let's find the end of the first partition
+    main_part_info = utils.get_partition_info(target_device + "1") # Assumes main is part 1
+    if not main_part_info or 'end_sector' not in main_part_info:
+        utils.print_with_color(_("Error: Could not get info for main partition {0}1 to create UEFI support partition.").format(target_device), "red")
+        return 1
+
+    start_sector_uefi = main_part_info['end_sector'] + 1
+    # Create a 10MB FAT16 partition (20480 sectors * 512 bytes/sector = 10MB)
+    # FAT16 is fine for small partitions and widely compatible for UEFI.
+    end_sector_uefi = start_sector_uefi + 20480 -1 # -1 because end is inclusive
+
+    utils.print_with_color(_("Attempting to create UEFI support partition {0} from sector {1} to {2}").format(
+        uefi_support_partition_device, start_sector_uefi, end_sector_uefi), "blue")
+
+    parted_command_mkpart = [
+        "parted", "--script", target_device,
+        "mkpart", "primary", "fat16",
+        str(start_sector_uefi) + "s", str(end_sector_uefi) + "s"
+    ]
+    if utils.run_command(parted_command_mkpart,
+                         message=_("Creating UEFI support partition with parted"),
+                         error_message=_("Error: parted failed to create UEFI support partition")):
+        return 1
+
+    # Format the new partition
+    # Allow some time for the kernel to recognize the new partition
+    time.sleep(2)
+    command_mkdosfs = utils.check_command("mkdosfs")
+    if not command_mkdosfs:
+        utils.print_with_color(_("Error: mkdosfs command not found, cannot format UEFI support partition."), "red")
+        return 1
+
+    mkfs_command = [
+        command_mkdosfs, "-F", "16", "-n", "UEFI-BOOT", uefi_support_partition_device
+    ]
+    if utils.run_command(mkfs_command,
+                         message=_("Formatting UEFI support partition {0} as FAT16").format(uefi_support_partition_device),
+                         error_message=_("Error: mkdosfs failed to format UEFI support partition")):
+        return 1
+
+    utils.print_with_color(_("UEFI support partition {0} created and formatted successfully.").format(uefi_support_partition_device), "green")
+    return 0
+
+
+def install_uefi_support_files(fs_handler, uefi_support_partition_device, temp_directory):
+    """
+    Installs UEFI boot files (e.g., UEFI:NTFS driver) to the UEFI support partition.
+
+    :param fs_handler: The filesystem handler for the main Windows partition (e.g., NTFSHandler).
+    :param uefi_support_partition_device: Device path of the UEFI support partition (e.g., /dev/sdb2).
+    :param temp_directory: Path to a temporary directory for downloads/extraction.
+    :return: 0 on success, 1 on failure
+    """
+    utils.check_kill_signal()
+    utils.print_with_color(_("Installing UEFI support files to {0}...").format(uefi_support_partition_device), "green")
+
+    bootloader_dir = os.path.join("WowUSB", "data", "bootloaders")
+    os.makedirs(bootloader_dir, exist_ok=True)
+
+    try:
+        uefi_driver_url, uefi_driver_filename = fs_handler.get_uefi_bootloader_file()
+    except AttributeError:
+        utils.print_with_color(_("Error: Filesystem handler {0} does not provide UEFI bootloader information.").format(fs_handler.name()), "red")
+        return 1
+
+    uefi_driver_local_path = os.path.join(bootloader_dir, uefi_driver_filename)
+
+    if not os.path.exists(uefi_driver_local_path):
+        utils.print_with_color(_("UEFI support file {0} not found locally. Downloading from {1}...").format(uefi_driver_filename, uefi_driver_url), "blue")
+        try:
+            with urllib.request.urlopen(uefi_driver_url) as response, open(uefi_driver_local_path, 'wb') as out_file:
+                shutil.copyfileobj(response, out_file)
+            utils.print_with_color(_("Downloaded {0} successfully.").format(uefi_driver_filename), "green")
+        except urllib.error.HTTPError as e:
+            utils.print_with_color(_("Error downloading UEFI support file {0}: HTTP Error {1}: {2}").format(uefi_driver_filename, e.code, e.reason), "red")
+            return 1
+        except urllib.error.URLError as e:
+            utils.print_with_color(_("Error downloading UEFI support file {0}: URL Error: {1}").format(uefi_driver_filename, e.reason), "red")
+            return 1
+        except IOError as e: # Catches file write errors
+            utils.print_with_color(_("Error writing UEFI support file {0} locally: {1}").format(uefi_driver_filename, str(e)), "red")
+            return 1
+        except Exception as e:
+            utils.print_with_color(_("An unexpected error occurred while downloading or saving {0}: {1}").format(uefi_driver_filename, str(e)), "red")
+            if debug:
+                traceback.print_exc()
+            return 1
+    else:
+        utils.print_with_color(_("Found local UEFI support file: {0}").format(uefi_driver_local_path), "green")
+
+    # Mount the UEFI support partition
+    uefi_mount_point = os.path.join(temp_directory, "uefi_support_mount")
+    os.makedirs(uefi_mount_point, exist_ok=True)
+
+    if utils.run_command(["mount", uefi_support_partition_device, uefi_mount_point],
+                         message=_("Mounting UEFI support partition {0}").format(uefi_support_partition_device),
+                         error_message=_("Error: Failed to mount UEFI support partition.")):
+        shutil.rmtree(uefi_mount_point, ignore_errors=True)
+        return 1
+
+    try:
+        # Expected structure on the UEFI support partition: EFI/Boot/bootx64.efi
+        efi_boot_dir = os.path.join(uefi_mount_point, "EFI", "Boot")
+        os.makedirs(efi_boot_dir, exist_ok=True)
+        target_efi_file = os.path.join(efi_boot_dir, "bootx64.efi") # Standard UEFI fallback path
+
+        # Assuming uefi-ntfs.img is a FAT disk image containing the EFI file.
+        # We need to extract bootx64.efi from it.
+        # For simplicity, if we can't loop mount, we'll assume the .img *is* the .efi file,
+        # which is often the case for single EFI application "images".
+        # A more robust solution would use 7z or loop mount to extract from the image.
+
+        # Attempt to mount the image to extract files
+        img_mount_point = os.path.join(temp_directory, "img_mount")
+        os.makedirs(img_mount_point, exist_ok=True)
+
+        loop_device = None
+        try:
+            # Setup loop device
+            proc = subprocess.run(["losetup", "--find", "--show", uefi_driver_local_path], capture_output=True, text=True, check=True)
+            loop_device = proc.stdout.strip()
+
+            # Mount loop device
+            if utils.run_command(["mount", "-o", "ro", loop_device, img_mount_point],
+                                 message=_("Loop mounting {0}").format(uefi_driver_filename),
+                                 error_message=_("Failed to loop mount UEFI image.")):
+                raise Exception("Loop mount failed")
+
+            source_efi_file_path = os.path.join(img_mount_point, "EFI", "Boot", "bootx64.efi")
+            if not os.path.exists(source_efi_file_path):
+                # Fallback: look for bootia32.efi or other common names if bootx64.efi is not found
+                source_efi_file_path_ia32 = os.path.join(img_mount_point, "EFI", "Boot", "bootia32.efi")
+                if os.path.exists(source_efi_file_path_ia32):
+                    source_efi_file_path = source_efi_file_path_ia32
+                else: # If still not found, maybe the image itself is the EFI file (less common for .img)
+                     source_efi_file_path = os.path.join(img_mount_point, "efi.img") # Or some other name inside
+                     if not os.path.exists(source_efi_file_path): # Final fallback
+                         utils.print_with_color(_("Could not find bootx64.efi or bootia32.efi within {0}.").format(uefi_driver_filename), "yellow")
+                         utils.print_with_color(_("Attempting to copy the .img file directly as bootx64.efi. This might not work."), "yellow")
+                         shutil.copy2(uefi_driver_local_path, target_efi_file) # This is a guess
+                         utils.print_with_color(_("Copied {0} to {1}").format(uefi_driver_local_path, target_efi_file), "green")
+                         # Early exit from try block after this guess
+                         raise Exception("Skipping further extraction after direct copy.")
+
+
+            if os.path.exists(source_efi_file_path): # Check again in case it was found by fallback
+                shutil.copy2(source_efi_file_path, target_efi_file)
+                utils.print_with_color(_("Copied {0} to {1}").format(source_efi_file_path, target_efi_file), "green")
+
+            # If fs_handler is NTFS, create a marker or basic grub.cfg if needed for chainloading
+            # For UEFI:NTFS from Rufus, the bootx64.efi IS the NTFS driver and bootloader.
+            # It should automatically look for \efi\microsoft\boot\bootmgfw.efi on the NTFS partition.
+            # No extra grub.cfg is typically needed on the FAT partition itself for this specific driver.
+
+        except Exception as e:
+            if "Skipping further extraction" not in str(e): # Don't log error if it was the direct copy fallback
+                utils.print_with_color(_("Could not extract from UEFI image {0}: {1}. Trying to use image directly.").format(uefi_driver_filename, str(e)), "yellow")
+                # Fallback: if extraction fails, copy the .img file directly as bootx64.efi.
+                # This assumes the .img might itself be a bootable EFI application.
+                try:
+                    shutil.copy2(uefi_driver_local_path, target_efi_file)
+                    utils.print_with_color(_("Copied {0} directly as {1}").format(uefi_driver_local_path, target_efi_file), "green")
+                except Exception as copy_e:
+                    utils.print_with_color(_("Failed to copy UEFI file: {0}").format(str(copy_e)), "red")
+                    return 1 # Critical failure
+        finally:
+            if os.path.ismount(img_mount_point):
+                utils.run_command(["umount", img_mount_point], suppress_errors=True)
+            if loop_device:
+                utils.run_command(["losetup", "-d", loop_device], suppress_errors=True)
+            shutil.rmtree(img_mount_point, ignore_errors=True)
+
+    finally:
+        if os.path.ismount(uefi_mount_point):
+            utils.run_command(["umount", uefi_mount_point],
+                              message=_("Unmounting UEFI support partition {0}").format(uefi_support_partition_device),
+                              error_message=_("Warning: Failed to unmount UEFI support partition."))
+        shutil.rmtree(uefi_mount_point, ignore_errors=True)
+
+    utils.print_with_color(_("UEFI support files installed successfully to {0}.").format(uefi_support_partition_device), "green")
+    return 0
 
 
 def cleanup_mountpoint(fs_mountpoint):

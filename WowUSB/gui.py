@@ -71,6 +71,12 @@ class MainFrame(wx.Frame):
 
         options_menu.Append(self.options_boot)
         options_menu.Append(self.options_skip_grub)
+        options_menu.AppendSeparator()
+        self.menuItemAdvancedMode = wx.MenuItem(options_menu, wx.ID_ANY, _("Advanced Mode"),
+                                                _("Show advanced configuration options."),
+                                                wx.ITEM_CHECK)
+        options_menu.Append(self.menuItemAdvancedMode)
+
 
         self.__MenuBar = wx.MenuBar()
         self.__MenuBar.Append(file_menu, _("&File"))
@@ -83,15 +89,29 @@ class MainFrame(wx.Frame):
 
         # Add filesystem selection panel to the top
         main_sizer.Add(self.__fs_panel, 0, wx.EXPAND | wx.ALL, 4)
+
+        # Placeholder for Partition Visualization Panel
+        self.visualization_panel = wx.Panel(self, style=wx.BORDER_SUNKEN)
+        self.visualization_panel.SetMinSize(wx.Size(-1, 60)) # Height of 60, width flexible
+        self.visualization_panel.SetBackgroundColour(wx.Colour("white"))
+        main_sizer.Add(self.visualization_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        self.visualization_panel.Bind(wx.EVT_PAINT, self.OnPaintVisualization)
+        self.planned_partitions_for_viz = [] # Data for visualization
         
         self.__MainPanel = MainPanel(self, wx.ID_ANY)
         main_sizer.Add(self.__MainPanel, 1, wx.EXPAND | wx.ALL, 4)
 
         self.SetSizer(main_sizer)
 
-        self.Bind(wx.EVT_MENU, self.__MainPanel.on_show_all_drive)
+        self.Bind(wx.EVT_MENU, self.__MainPanel.on_show_all_drive, self.__menuItemShowAll) # Corrected binding
+        self.Bind(wx.EVT_MENU, self.on_toggle_advanced_mode, self.menuItemAdvancedMode)
         self.Bind(wx.EVT_MENU, self.on_quit, exit_item)
         self.Bind(wx.EVT_MENU, self.on_about, help_item)
+
+    def on_toggle_advanced_mode(self, event):
+        is_advanced = self.menuItemAdvancedMode.IsChecked()
+        self.__MainPanel.ShowAdvancedOptions(is_advanced)
+        self.Layout() # Refresh layout
 
     def on_quit(self, __):
         self.Close(True)
@@ -102,6 +122,89 @@ class MainFrame(wx.Frame):
 
     def is_show_all_checked(self):
         return self.__menuItemShowAll.IsChecked()
+
+    def OnPaintVisualization(self, event):
+        dc = wx.PaintDC(self.visualization_panel)
+        dc.Clear() # Clear the panel
+
+        panel_width, panel_height = self.visualization_panel.GetSize()
+
+        if not self.planned_partitions_for_viz:
+            # Get text extent to center it
+            text = _("Partition layout preview will appear here when options are selected.")
+            tw, th = dc.GetTextExtent(text)
+            dc.DrawText(text, (panel_width - tw) // 2, (panel_height - th) // 2)
+            return
+
+        # --- This is conceptual drawing logic ---
+        # Calculate total size for scaling (assuming 'size_bytes' is in the dict)
+        try:
+            total_disk_size_bytes = sum(part.get('size_bytes', 0) for part in self.planned_partitions_for_viz)
+            if total_disk_size_bytes == 0: # Avoid division by zero if data is incomplete
+                dc.DrawText("No partition sizes defined.", 5, 5)
+                return
+        except TypeError:
+            dc.DrawText("Invalid partition data.", 5,5)
+            return
+
+
+        current_x = 2 # Start with a small margin
+        padding = 2    # Padding between partitions
+
+        for part in self.planned_partitions_for_viz:
+            part_size_bytes = part.get('size_bytes', 0)
+            part_width = int((part_size_bytes / total_disk_size_bytes) * (panel_width - (len(self.planned_partitions_for_viz) + 1) * padding) )
+            part_width = max(part_width, 10) # Minimum width to be visible
+
+            # Simple color coding (can be expanded)
+            fs_type = part.get('fs', 'UNKNOWN').upper()
+            if "ESP" in part.get('name', '').upper() or fs_type == "FAT16" or fs_type == "FAT32":
+                color = wx.Colour("light grey")
+            elif fs_type == "NTFS":
+                color = wx.Colour("sky blue")
+            elif fs_type == "EXFAT":
+                color = wx.Colour("cyan")
+            elif fs_type == "F2FS":
+                color = wx.Colour("light green")
+            elif fs_type == "LINUX-SWAP":
+                color = wx.Colour("pink")
+            else: # EXT4, BTRFS, etc.
+                color = wx.Colour("orange")
+
+            dc.SetBrush(wx.Brush(color))
+            dc.SetPen(wx.Pen(wx.Colour("black"), 1)) # Border
+            dc.DrawRectangle(current_x, 2, part_width, panel_height - 4)
+
+            # Draw text label inside the partition
+            label_text = f"{part.get('name', 'Part')}\n{part.get('fs', '')} ({utils.convert_to_human_readable_format(part_size_bytes)})"
+
+            # Truncate text if too long for the box, or draw smaller
+            # For simplicity, just draw it. Proper text fitting is more complex.
+            # Check if text fits, otherwise just draw name
+            text_width, text_height = dc.GetTextExtent(part.get('name', 'Part'))
+            if text_width > part_width -4 :
+                 label_text = part.get('name', 'P')[0:max(1,int(part_width/text_width*len(part.get('name', 'P')))-2)] + "..." if len(part.get('name', 'P')) > 1 else part.get('name', 'P')
+
+
+            dc.SetFont(wx.Font(7, wx.FONTFAMILY_SWISS, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
+            # Try to center text, very crudely
+            # tw, th = dc.GetTextExtent(label_text.split('\n')[0]) # Just first line for now
+            dc.DrawText(label_text, current_x + 3, 5)
+
+            current_x += part_width + padding
+        # --- End conceptual drawing logic ---
+
+    def UpdateVisualizationDisplay(self, planned_layout_data):
+        """
+        Updates the data for the partition visualization and refreshes the panel.
+        This function should be called after core logic planning functions are available
+        and GUI event handlers can fetch the planned layout.
+
+        :param planned_layout_data: A list of partition dictionaries.
+                                   Each dict should have 'name', 'size_bytes', 'fs'.
+        """
+        self.planned_partitions_for_viz = planned_layout_data
+        self.visualization_panel.Refresh() # Trigger OnPaintVisualization
 
     def get_selected_filesystem(self):
         """Get the filesystem type selected by the user"""
@@ -203,6 +306,16 @@ class MainPanel(wx.Panel):
         self.refresh_list_content()
         self.on_source_option_changed(wx.CommandEvent)
         self.__btInstall.Enable(self.is_install_ok())
+
+        # Advanced Options Panel (initially hidden)
+        self.advanced_options_panel = AdvancedOptionsPanel(self, wx.ID_ANY)
+        main_sizer.Add(self.advanced_options_panel, 0, wx.EXPAND | wx.ALL, 5)
+        self.advanced_options_panel.Hide() # Start hidden
+
+
+    def ShowAdvancedOptions(self, show):
+        self.advanced_options_panel.Show(show)
+        self.Layout()
 
     def refresh_list_content(self):
         # USB
@@ -379,6 +492,32 @@ class DialogAbout(wx.Dialog):
         self.SetSizer(sizer_all)
         self.Layout()
 
+class AdvancedOptionsPanel(wx.Panel):
+    def __init__(self, parent, ID, pos=wx.DefaultPosition, size=wx.DefaultSize, style=wx.TAB_TRAVERSAL):
+        super(AdvancedOptionsPanel, self).__init__(parent, ID, pos, size, style)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Example advanced option (more would be added here)
+        self.cb_force_gpt = wx.CheckBox(self, label=_("Force GPT partition table"))
+        lbl_info = wx.StaticText(self, label=_("More advanced options will appear here (e.g., custom GRUB, cluster size)."))
+
+        sizer.Add(self.cb_force_gpt, 0, wx.ALL, 5)
+        sizer.Add(lbl_info, 0, wx.ALL, 5)
+
+        self.SetSizer(sizer)
+        self.Layout()
+
+    def GetAdvancedOptions(self):
+        """
+        Returns a dictionary of selected advanced options.
+        Example: {'force_gpt': True}
+        """
+        return {
+            'force_gpt': self.cb_force_gpt.IsChecked(),
+            # Add other options here
+        }
+
 
 class PanelNoteBookAutors(wx.Panel):
     def __init__(self, parent, ID=wx.ID_ANY, autherName="", imgName="", siteLink="", pos=wx.DefaultPosition,
@@ -431,10 +570,22 @@ class WowUSB_handler(threading.Thread):
         try:
             core.main(source_fs_mountpoint, target_fs_mountpoint, self.source, self.target, "device", temp_directory,
                     self.filesystem, self.boot_flag, None, self.skip_grub)
-        except SystemExit:
-            pass
-
-        core.cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_media)
+        except SystemExit as e: # Catch SystemExit, which OperationCancelledError inherits from
+            if "Operation cancelled by user via GUI" in str(e):
+                self.error = _("Operation Cancelled.")
+                # self.progress is already likely False or some value, dialog will stop
+            else:
+                # Some other SystemExit, perhaps from core.py doing its own sys.exit()
+                # This path might need more refinement depending on how core.py exits.
+                self.error = _("Operation exited.")
+            # No need to print traceback for user-initiated cancel or clean SystemExit
+        except Exception as e:
+            self.error = str(e)
+            if core.debug: # Assuming core.debug is set appropriately
+                self.error += "\n" + traceback.format_exc()
+        finally:
+            # Ensure cleanup is always called
+            core.cleanup(source_fs_mountpoint, target_fs_mountpoint, temp_directory, target_media)
 
 
 def run():

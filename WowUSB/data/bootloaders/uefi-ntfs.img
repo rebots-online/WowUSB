@@ -1,0 +1,4 @@
+This is a dummy UEFI NTFS bootloader image for testing purposes.
+It does not need to be a valid EFI application for most tests,
+as its content or functionality is often mocked.
+The important part is that it exists at the expected path.

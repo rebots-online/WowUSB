@@ -45,9 +45,10 @@ class WowUSBTestCase(unittest.TestCase):
         self.mock_run.return_value.stdout = b""
         self.mock_run.return_value.stderr = b""
         
-        # Mock check_command to always return the command
+        # Mock check_command to return a mock path, so it's a string, not bool
+        # Individual tests can override this if they need to simulate command not found (return None)
         self.check_command_patcher = patch('WowUSB.utils.check_command', 
-                                          return_value=True)
+                                          return_value='/usr/bin/mock_command_path')
         self.mock_check_command = self.check_command_patcher.start()
     
     def tearDown(self):
