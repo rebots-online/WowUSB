@@ -91,6 +91,15 @@ class FilesystemHandler(ABC):
         """
         return False
 
+    @classmethod
+    def validate_filesystem(cls, partition):
+        """
+        Default validator for filesystems that don't have a specific one.
+        Can be overridden by subclasses.
+        """
+        utils.print_with_color(_("No specific validator for {0} filesystem. Assuming OK.").format(cls.name()), "yellow")
+        return True
+
 class FatFilesystemHandler(FilesystemHandler):
     """Handler for FAT/FAT32 filesystem operations"""
     
@@ -112,13 +121,11 @@ class FatFilesystemHandler(FilesystemHandler):
         
         utils.print_with_color(_("Creating FAT/FAT32 filesystem..."), "green")
         
-        # Check for command_mkdosfs
         command_mkdosfs = utils.check_command("mkdosfs")
         if not command_mkdosfs:
             utils.print_with_color(_("Error: mkdosfs command not found"), "red")
             return 1
             
-        # Format the first partition as FAT32 filesystem
         if subprocess.run([command_mkdosfs,
                           "-F", "32",
                           "-n", label,
@@ -132,11 +139,8 @@ class FatFilesystemHandler(FilesystemHandler):
     @classmethod
     def check_dependencies(cls):
         missing = []
-        
-        # Check for mkdosfs
         if not utils.check_command("mkdosfs"):
             missing.append("dosfstools")
-            
         return (len(missing) == 0, missing)
 
 class NtfsFilesystemHandler(FilesystemHandler):
@@ -157,91 +161,47 @@ class NtfsFilesystemHandler(FilesystemHandler):
     @classmethod
     def format_partition(cls, partition, label):
         utils.check_kill_signal()
-        
         utils.print_with_color(_("Creating NTFS filesystem..."), "green")
-        
-        # Check for mkntfs command
         command_mkntfs = utils.check_command("mkntfs")
         if not command_mkntfs:
             utils.print_with_color(_("Error: mkntfs command not found"), "red")
             return 1
             
-        # Format the partition as NTFS with optimized parameters
-        format_cmd = [
-            command_mkntfs,
-            "-f",  # Fast format
-            "-L", label,
-            "-v"   # Verbose output
-        ]
-        
-        # Add optimization parameters
+        format_cmd = [command_mkntfs, "-f", "-L", label, "-v"]
         try:
-            # Get device type (HDD, SSD, USB Flash)
             device_base = partition.rstrip('0123456789')
             with open(f"/sys/block/{os.path.basename(device_base)}/queue/rotational", 'r') as f:
                 is_rotational = int(f.read().strip())
-            
-            # Add device-specific optimizations
             if not is_rotational:
-                # For SSDs and flash drives
-                format_cmd.extend([
-                    "-c", "4096",  # 4K cluster size for SSDs
-                    "-a", "4096"   # 4K alignment for better performance
-                ])
+                format_cmd.extend(["-c", "4096", "-a", "4096"])
             else:
-                # For HDDs
-                format_cmd.extend([
-                    "-c", "16384"  # 16K cluster size for HDDs
-                ])
+                format_cmd.extend(["-c", "16384"])
         except (IOError, OSError):
-            # Fallback to default options if we can't determine device type
             pass
         
-        # Execute the format command
-        utils.print_with_color(_("Running: {0}").format(" ".join(format_cmd)), "green" if utils.verbose else None)
+        utils.print_with_color(_("Running: {0}").format(" ".join(format_cmd + [partition])), "green" if utils.verbose else None)
         result = subprocess.run(format_cmd + [partition], capture_output=True, text=True)
         if result.returncode != 0:
             utils.print_with_color(_("Error: Unable to create NTFS filesystem:"), "red")
             utils.print_with_color(result.stderr, "red")
             return 1
             
-        # Validate the newly created filesystem
         if not cls.validate_filesystem(partition):
             return 1
-            
         return 0
         
     @classmethod
     def validate_filesystem(cls, partition):
-        """
-        Validate the NTFS filesystem after creation
-        
-        This method performs comprehensive validation of the newly created
-        NTFS filesystem to ensure it's properly formatted and can handle
-        large files.
-
-        Args:
-            partition (str): Partition device path (e.g., /dev/sdX1)
-            
-        Returns:
-            bool: True if validation passes, False otherwise
-        """
         utils.check_kill_signal()
-        
         utils.print_with_color(_("Validating NTFS filesystem..."), "green")
-        
-        # Find available filesystem check tool
         ntfsck_cmd = utils.check_command("ntfsfix") or utils.check_command("ntfsck")
         if not ntfsck_cmd:
             utils.print_with_color(_("Warning: NTFS filesystem check tools not found, skipping validation"), "yellow")
             return True
             
-        # Run basic filesystem check
-        utils.print_with_color(_("Performing basic filesystem check..."), "green" if utils.verbose else None)
-        
         check_cmd = [ntfsck_cmd]
         if ntfsck_cmd.endswith("ntfsfix"):
-            check_cmd.append("-n")  # No write mode for ntfsfix
+            check_cmd.append("-n")
         
         result = subprocess.run(check_cmd + [partition], capture_output=True, text=True)
         if result.returncode != 0:
@@ -249,61 +209,30 @@ class NtfsFilesystemHandler(FilesystemHandler):
             utils.print_with_color(result.stderr, "red")
             return False
             
-        # Create a temporary mount point for additional validation
         with tempfile.TemporaryDirectory() as temp_mount:
             try:
-                # Mount the filesystem
-                utils.print_with_color(_("Mounting filesystem for validation..."), "green" if utils.verbose else None)
                 if subprocess.run(["mount", "-t", "ntfs-3g", partition, temp_mount]).returncode != 0:
                     utils.print_with_color(_("Warning: Unable to mount filesystem for validation"), "yellow")
-                    return True  # Continue despite warning
+                    return True
                 
-                # Test large file write capability
-                try:
-                    utils.print_with_color(_("Testing large file support..."), "green" if utils.verbose else None)
-                    large_file_path = os.path.join(temp_mount, "large_file_test")
-                    
-                    # Create a sparse file of 5GB to test >4GB support
-                    with open(large_file_path, 'wb') as f:
-                        f.seek(5 * 1024 * 1024 * 1024 - 1)  # 5GB - 1 byte
-                        f.write(b'\x00')  # Write a single byte at the end
-                    
-                    # Verify file size
-                    file_size = os.path.getsize(large_file_path)
-                    if file_size < 4 * 1024 * 1024 * 1024:
-                        utils.print_with_color(
-                            _("Warning: Large file test failed. File size: {0}").format(
-                                utils.convert_to_human_readable_format(file_size)
-                            ), 
-                            "yellow"
-                        )
-                    else:
-                        utils.print_with_color(
-                            _("Large file test passed. File size: {0}").format(
-                                utils.convert_to_human_readable_format(file_size)
-                            ), 
-                            "green" if utils.verbose else None
-                        )
-                    
-                    # Clean up test file
-                    os.unlink(large_file_path)
-                    
-                except (IOError, OSError) as e:
-                    utils.print_with_color(_("Warning: Large file test failed: {0}").format(str(e)), "yellow")
+                large_file_path = os.path.join(temp_mount, "large_file_test")
+                with open(large_file_path, 'wb') as f:
+                    f.seek(5 * 1024 * 1024 * 1024 - 1)
+                    f.write(b'\x00')
+
+                file_size = os.path.getsize(large_file_path)
+                if file_size < 4 * 1024 * 1024 * 1024:
+                    utils.print_with_color(_("Warning: Large file test failed. File size: {0}").format(utils.convert_to_human_readable_format(file_size)), "yellow")
+                os.unlink(large_file_path)
                 
-                # Unmount the filesystem
-                utils.print_with_color(_("Unmounting test filesystem..."), "green" if utils.verbose else None)
                 if subprocess.run(["umount", temp_mount]).returncode != 0:
                     utils.print_with_color(_("Warning: Unable to unmount test filesystem"), "yellow")
                     return False
-                
             except Exception as e:
                 utils.print_with_color(_("Warning: Validation error: {0}").format(str(e)), "yellow")
-                # Attempt to unmount the filesystem if it was mounted
                 try:
-                    subprocess.run(["umount", temp_mount], stderr=subprocess.DEVNULL)
-                except:
-                    pass  # Ignore errors during cleanup
+                    subprocess.run(["umount", temp_mount], stderr=subprocess.DEVNULL, check=False)
+                except: pass
                 return False
                 
         utils.print_with_color(_("NTFS filesystem validation completed successfully"), "green")
@@ -312,32 +241,17 @@ class NtfsFilesystemHandler(FilesystemHandler):
     @classmethod
     def check_dependencies(cls):
         missing = []
-        
-        # Check for mkntfs
         if not utils.check_command("mkntfs"):
             missing.append("ntfs-3g")
-            
         return (len(missing) == 0, missing)
         
     @classmethod
     def needs_uefi_support_partition(cls):
-        """NTFS requires a separate UEFI support partition for UEFI booting"""
         return True
         
     @classmethod
     def get_uefi_bootloader_file(cls):
-        """
-        Get the appropriate UEFI bootloader file for NTFS.
-        
-        Returns:
-            tuple: (url, filename) where:
-                url (str): URL to download the bootloader image
-                filename (str): Local filename to save as
-        """
-        return (
-            "https://github.com/pbatard/rufus/raw/master/res/uefi/uefi-ntfs.img",
-            "uefi-ntfs.img"
-        )
+        return ("https://github.com/pbatard/rufus/raw/master/res/uefi/uefi-ntfs.img", "uefi-ntfs.img")
 
 class ExfatFilesystemHandler(FilesystemHandler):
     """Handler for exFAT filesystem operations"""
@@ -352,81 +266,36 @@ class ExfatFilesystemHandler(FilesystemHandler):
         
     @classmethod
     def parted_fs_type(cls):
-        # parted doesn't directly support exfat
-        # but it can be created after partition creation
         return "fat32"
         
     @classmethod
     def format_partition(cls, partition, label):
         utils.check_kill_signal()
-        
-        # Recommend optimal settings based on device type
+        format_opts = ["--volume-label", label, "--cluster-size=128K"]
         try:
-            # Get device type (HDD, SSD, USB Flash)
             device_base = partition.rstrip('0123456789')
             with open(f"/sys/block/{os.path.basename(device_base)}/queue/rotational", 'r') as f:
                 is_rotational = int(f.read().strip())
             
-            # Default options for modern SSDs and flash drives
-            format_opts = [
-                "--sector-size=4096",  # Modern default sector size
-                "--volume-label", label,
-                "--volume-serial", hex(int.from_bytes(os.urandom(4), 'big'))[2:].upper()
-            ]
-            
-            # Add device-specific optimizations
+            format_opts = ["--sector-size=4096", "--volume-label", label, "--volume-serial", hex(int.from_bytes(os.urandom(4), 'big'))[2:].upper()]
             if not is_rotational:
-                # For SSDs and flash drives
-                format_opts.append("--cluster-size=128K")  # Reduce write amplification
-                format_opts.append("--alignment=1M")       # Align with flash erase blocks
-                
-                # Check for USB flash drive vs SSD
+                format_opts.extend(["--cluster-size=128K", "--alignment=1M"])
                 try:
                     with open(f"/sys/block/{os.path.basename(device_base)}/removable", 'r') as f:
-                        is_removable = int(f.read().strip())
-                    
-                    # Additional optimizations for USB flash drives
-                    if is_removable:
-                        # USB flash drives benefit from these settings
-                        format_opts.append("--quick-format")   # Faster formatting for removable media
-                        format_opts.append("--sectormap=all")  # Better wear leveling for flash drives
-                except (IOError, OSError):
-                    # If we can't determine if it's removable, assume it's not
-                    pass
+                        if int(f.read().strip()):
+                            format_opts.extend(["--quick-format", "--sectormap=all"])
+                except (IOError, OSError): pass
             else:
-                # For HDDs
-                format_opts.append("--cluster-size=32K")   # Better for general HDD use
-        except (IOError, OSError):
-            # Fallback to basic options if we can't determine device type
-            format_opts = [
-                "--volume-label", label,
-                "--cluster-size=128K"  # Good general-purpose size
-            ]
+                format_opts.append("--cluster-size=32K")
+        except (IOError, OSError): pass
         
         utils.print_with_color(_("Creating exFAT filesystem..."), "green")
-        
-
-        # Check for mkexfatfs command (from exfat-utils) or mkfs.exfat (from exfatprogs)
-        command_mkexfatfs = utils.check_command("mkexfatfs")
-        command_mkfs_exfat = utils.check_command("mkfs.exfat")
-        
-        # Initialize command_mkexfat to None
-        command_mkexfat = None
-        
-        # Explicitly check each command and assign the path
-        if command_mkexfatfs is not None:
-            command_mkexfat = command_mkexfatfs
-        elif command_mkfs_exfat is not None:
-            command_mkexfat = command_mkfs_exfat
-        else:
+        command_mkexfat = utils.check_command("mkexfatfs") or utils.check_command("mkfs.exfat")
+        if not command_mkexfat:
             utils.print_with_color(_("Error: mkexfatfs/mkfs.exfat command not found"), "red")
             return 1
         
-        # Format command with optimized options
         cmd = [command_mkexfat] + format_opts + [partition]
-
-
-        
         try:
             utils.print_with_color(_("Running: {0}").format(" ".join(cmd)), "green" if utils.verbose else None)
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -438,114 +307,56 @@ class ExfatFilesystemHandler(FilesystemHandler):
             utils.print_with_color(_("Error: Formatting failed: {0}").format(str(e)), "red")
             return 1
             
-        # Validate the newly created filesystem
         if not cls.validate_filesystem(partition):
             return 1
-            
         return 0
     
     @classmethod
     def needs_uefi_support_partition(cls):
-        """exFAT requires a separate UEFI support partition for UEFI booting"""
         return True
     
     @classmethod
     def validate_filesystem(cls, partition):
-        """
-        Validate the exFAT filesystem after creation
-        
-        This method performs comprehensive validation of the newly created
-        exFAT filesystem to ensure it's properly formatted and can handle
-        large files.
-
-        Args:
-            partition (str): Partition device path (e.g., /dev/sdX1)
-            
-        Returns:
-            bool: True if validation passes, False otherwise
-        """
         utils.check_kill_signal()
-        
         utils.print_with_color(_("Validating exFAT filesystem..."), "green")
-        
-        # Find available filesystem check tool
         fsck_cmd = utils.check_command("fsck.exfat") or utils.check_command("exfatfsck") or utils.check_command("chkexfat")
         if not fsck_cmd:
             utils.print_with_color(_("Warning: exFAT filesystem check tools not found, skipping validation"), "yellow")
             return True
             
-        # Run basic filesystem check
-        utils.print_with_color(_("Performing basic filesystem check..."), "green" if utils.verbose else None)
         result = subprocess.run([fsck_cmd, "-n", partition], capture_output=True, text=True)
         if result.returncode != 0:
             utils.print_with_color(_("Error: Filesystem validation failed:"), "red")
             utils.print_with_color(result.stderr, "red")
             return False
             
-        # Create a temporary mount point for additional validation
         with tempfile.TemporaryDirectory() as temp_mount:
             try:
-                # Mount the filesystem
-                utils.print_with_color(_("Mounting filesystem for validation..."), "green" if utils.verbose else None)
-
                 if subprocess.run(["mount", "-t", "exfat", partition, temp_mount]).returncode != 0:
                     utils.print_with_color(_("Warning: Unable to mount filesystem for validation"), "yellow")
-                    return True  # Continue despite warning
-
-                # Verify the mount point exists and is writable
+                    return True
                 if not os.path.exists(temp_mount) or not os.access(temp_mount, os.W_OK):
-                    utils.print_with_color(
-                        _("Warning: Mount point does not exist or is not writable: {0}").format(temp_mount),
-                        "yellow"
-                    )
-                    return True  # Continue despite warning
+                    utils.print_with_color(_("Warning: Mount point does not exist or is not writable: {0}").format(temp_mount), "yellow")
+                    return True
 
-                # Test large file write capability
-                try:
-                    utils.print_with_color(_("Testing large file support..."), "green" if utils.verbose else None)
-                    large_file_path = os.path.join(temp_mount, "large_file_test")
-                    
-                    # Create a sparse file of 5GB to test >4GB support
-                    with open(large_file_path, 'wb') as f:
-                        f.seek(5 * 1024 * 1024 * 1024 - 1)  # 5GB - 1 byte
-                        f.write(b'\x00')  # Write a single byte at the end
-                    
-                    # Verify file size
-                    file_size = os.path.getsize(large_file_path)
-                    if file_size < 4 * 1024 * 1024 * 1024:
-                        utils.print_with_color(
-                            _("Warning: Large file test failed. File size: {0}").format(
-                                utils.convert_to_human_readable_format(file_size)
-                            ), 
-                            "yellow"
-                        )
-                    else:
-                        utils.print_with_color(
-                            _("Large file test passed. File size: {0}").format(
-                                utils.convert_to_human_readable_format(file_size)
-                            ), 
-                            "green" if utils.verbose else None
-                        )
-                    
-                    # Clean up test file
-                    os.unlink(large_file_path)
-                    
-                except (IOError, OSError) as e:
-                    utils.print_with_color(_("Warning: Large file test failed: {0}").format(str(e)), "yellow")
+                large_file_path = os.path.join(temp_mount, "large_file_test")
+                with open(large_file_path, 'wb') as f:
+                    f.seek(5 * 1024 * 1024 * 1024 - 1)
+                    f.write(b'\x00')
+
+                file_size = os.path.getsize(large_file_path)
+                if file_size < 4 * 1024 * 1024 * 1024:
+                    utils.print_with_color(_("Warning: Large file test failed. File size: {0}").format(utils.convert_to_human_readable_format(file_size)),"yellow")
+                os.unlink(large_file_path)
                 
-                # Unmount the filesystem
-                utils.print_with_color(_("Unmounting filesystem for validation..."), "green" if utils.verbose else None)
                 if subprocess.run(["umount", temp_mount]).returncode != 0:
                     utils.print_with_color(_("Warning: Unable to unmount test filesystem"), "yellow")
                     return False
-                
             except Exception as e:
                 utils.print_with_color(_("Warning: Validation error: {0}").format(str(e)), "yellow")
-                # Attempt to unmount the filesystem if it was mounted
                 try:
-                    subprocess.run(["umount", temp_mount], stderr=subprocess.DEVNULL)
-                except:
-                    pass  # Ignore errors during cleanup
+                    subprocess.run(["umount", temp_mount], stderr=subprocess.DEVNULL, check=False)
+                except: pass
                 return False
                 
         utils.print_with_color(_("exFAT filesystem validation completed successfully"), "green")
@@ -553,125 +364,56 @@ class ExfatFilesystemHandler(FilesystemHandler):
     
     @classmethod
     def get_uefi_bootloader_file(cls):
-        """
-        Get the appropriate UEFI bootloader file for exFAT.
-        For now, we use UEFI:NTFS as it can handle exFAT with proper drivers.
-        
-        Returns:
-            tuple: (url, filename) where:
-                url (str): URL to download the bootloader image
-                filename (str): Local filename to save as
-        """
-        return (
-            "https://github.com/pbatard/rufus/raw/master/res/uefi/uefi-ntfs.img",
-            "uefi-ntfs.img"
-        )
-    
-    @classmethod
-    def create_uefi_support_partition(cls, device):
-        """
-        Create a UEFI support partition for exFAT boot support
-        
-        Args:
-            device (str): Device path (e.g., /dev/sdX)
-            
-        Returns:
-            bool: True on success, False on failure
-        """
-        utils.check_kill_signal()
-        
-        utils.print_with_color(_("Creating UEFI:exFAT support partition..."), "green")
-        
-        # UEFI boot partition needs to be FAT12/16/32
-        subprocess.run([
-            "parted",
-            "--align", "none",  # Small partition, alignment not critical
-            "--script",
-            device,
-            "mkpart",
-            "primary",
-            "fat16",  # FAT16 for compatibility
-            "--", "-2048s", "-1s"  # Last 1MB for boot support
-        ])
-        
-        return True        
+        return ("https://github.com/pbatard/rufus/raw/master/res/uefi/uefi-ntfs.img", "uefi-ntfs.img")
     
     @classmethod
     def check_dependencies(cls):
-        """
-        Check for required exFAT filesystem tools and their versions
-        
-        This method checks for both exfatprogs and exfat-utils packages, as different
-        distributions may provide one or the other. It also checks tool versions to
-        ensure required features are available.
-        
-        Returns:
-            tuple: (is_available, missing_dependencies)
-                is_available (bool): True if required tools are available
-                missing_dependencies (list): List of missing tools or version requirements
-        """
         missing = []
-        version_info = {}
-        
-        # Define required tools and their minimum versions
-        REQUIRED_TOOLS = {
-            'mkexfatfs': '1.3.0',  # exfat-utils
-            'mkfs.exfat': '1.1.0',  # exfatprogs
-            'fsck.exfat': '1.1.0',  # For validation
-            'exfatlabel': '1.3.0'   # For label management
-        }
-        
-        # Check each required tool
+        REQUIRED_TOOLS = {'mkexfatfs': '1.3.0', 'mkfs.exfat': '1.1.0', 'fsck.exfat': '1.1.0', 'exfatlabel': '1.3.0'}
         found_formatter = False
         for tool, min_version in REQUIRED_TOOLS.items():
-            if utils.check_command(tool):
-                # Get tool version
+            tool_path = utils.check_command(tool)
+            if tool_path:
                 try:
-                    version_output = subprocess.run(
-                        [tool, '--version'],
-                        capture_output=True,
-                        text=True
-                    ).stdout
+                    version_output = subprocess.run([tool_path, '--version'], capture_output=True, text=True, check=False).stdout
+                    if not version_output and tool_path.endswith('mkexfatfs'):
+                         version_output = subprocess.run([tool_path], capture_output=True, text=True, check=False).stderr
                     
-                    # Extract version number using regex
-                    version_match = re.search(r'(\d+\.\d+\.\d+)', version_output)
+                    version_match = re.search(r'version\s+(\d+\.\d+\.\d+)', version_output, re.IGNORECASE) or \
+                                  re.search(r'mkexfatfs\s+(\d+\.\d+\.\d+)', version_output, re.IGNORECASE)
                     if version_match:
                         version = version_match.group(1)
-                        version_info[tool] = version
-                        
-                        # Compare versions
-                        if cls._compare_versions(version, min_version) < 0:
+                        if not hasattr(utils, '_compare_versions'):
+                            utils._compare_versions = lambda v1, v2: (tuple(map(int, v1.split('.'))) > tuple(map(int, v2.split('.')))) - \
+                                                                    (tuple(map(int, v1.split('.'))) < tuple(map(int, v2.split('.'))))
+
+                        if utils._compare_versions(version, min_version) < 0:
                             missing.append(f"{tool} (found {version}, need {min_version})")
                         elif tool in ['mkexfatfs', 'mkfs.exfat']:
                             found_formatter = True
-                            
-                except (subprocess.SubprocessError, OSError):
+                    else:
+                        missing.append(f"{tool} (version not detectable or too old, need >={min_version})")
+                except (subprocess.SubprocessError, OSError, AttributeError):
                     missing.append(f"{tool} (version check failed)")
-            elif tool not in ['mkexfatfs', 'mkfs.exfat'] or not found_formatter:
-                # Only add formatting tools to missing if neither is found
+            elif tool in ['mkexfatfs', 'mkfs.exfat'] and not found_formatter:
                 missing.append(tool)
+            elif tool not in ['mkexfatfs', 'mkfs.exfat']:
+                 missing.append(tool)
+
+        if not found_formatter and ('mkexfatfs' in missing and 'mkfs.exfat' in missing) :
+             pass
+        elif not found_formatter:
+            if 'mkexfatfs' not in [m.split(' ')[0] for m in missing] and 'mkfs.exfat' not in [m.split(' ')[0] for m in missing]:
+                 missing.append("mkexfatfs or mkfs.exfat")
         
         if missing:
-            # Add distribution-specific package information
-            package_info = {
-                'Debian/Ubuntu': 'exfatprogs',
-                'Fedora': 'exfatprogs',
-                'openSUSE': 'exfatprogs',
-                'Arch Linux': 'exfatprogs',
-                'Alternative': 'exfat-utils (legacy)'
-            }
-            missing.append("\nInstall using your distribution's package manager:")
-            for distro, pkg in package_info.items():
-                missing.append(f"  {distro}: {pkg}")
+            package_info = {'Debian/Ubuntu': 'exfatprogs', 'Fedora': 'exfatprogs', 'openSUSE': 'exfatprogs', 'Arch Linux': 'exfatprogs', 'Alternative': 'exfat-utils (legacy)'}
+            missing_str = ", ".join(list(set(m.split(' ')[0] for m in missing)))
+            missing_details = f"Missing tools: {missing_str}. Suggested packages: "
+            missing_details += "; ".join([f"{distro}: {pkg}" for distro, pkg in package_info.items()])
+            return (False, [missing_details])
                 
-        return (len(missing) == 0, missing)
-    
-    @staticmethod
-    def _compare_versions(ver1, ver2):
-        """Compare two version strings"""
-        v1_parts = [int(x) for x in ver1.split('.')]
-        v2_parts = [int(x) for x in ver2.split('.')]
-        return (v1_parts > v2_parts) - (v1_parts < v2_parts)
+        return (True, [])
 
 class F2fsFilesystemHandler(FilesystemHandler):
     """Handler for F2FS (Flash-Friendly File System) operations"""
@@ -686,83 +428,37 @@ class F2fsFilesystemHandler(FilesystemHandler):
         
     @classmethod
     def parted_fs_type(cls):
-        # parted doesn't directly support f2fs
-        # but we can create the filesystem after partition creation
         return "ext4"
         
     @classmethod
     def format_partition(cls, partition, label):
-        """
-        Format the partition with F2FS filesystem
-        
-        Args:
-            partition (str): Partition device path (e.g., /dev/sdX1)
-            label (str): Filesystem label to apply
-            
-        Returns:
-            int: 0 on success, non-zero on failure
-        """
         utils.check_kill_signal()
-        
         utils.print_with_color(_("Creating F2FS filesystem..."), "green")
-        
-        # Check for mkfs.f2fs command
         command_mkf2fs = utils.check_command("mkfs.f2fs")
         if not command_mkf2fs:
             utils.print_with_color(_("Error: mkfs.f2fs command not found"), "red")
             return 1
         
-        # Determine optimal parameters based on device type
-        format_opts = ["-f"]  # Force overwrite
-        
+        format_opts = ["-f"]
         try:
-            # Get device type (HDD, SSD, USB Flash)
             device_base = partition.rstrip('0123456789')
             with open(f"/sys/block/{os.path.basename(device_base)}/queue/rotational", 'r') as f:
                 is_rotational = int(f.read().strip())
-        
-            # Add device-specific optimizations
             if not is_rotational:
-                # For SSDs and flash drives
-                format_opts.extend([
-                    "-O", "extra_attr,inode_checksum,sb_checksum",  # Enable checksums for reliability
-                    "-w", "4096",  # 4K sector size for modern flash
-                    "-m", "5"      # 5% over-provisioning
-                ])
-                
-                # Check if it's a removable device (likely USB flash)
+                format_opts.extend(["-O", "extra_attr,inode_checksum,sb_checksum", "-w", "4096", "-m", "5"])
                 try:
                     with open(f"/sys/block/{os.path.basename(device_base)}/removable", 'r') as f:
-                        is_removable = int(f.read().strip())
-                    
-                    if is_removable:
-                        # USB flash drives benefit from higher over-provisioning
-                        format_opts.extend([
-                            "-m", "10",  # 10% over-provisioning for better longevity
-                            "-t", "1"    # 1 segment per section for better GC
-                        ])
-                except (IOError, OSError):
-                    pass
+                        if int(f.read().strip()):
+                            format_opts.extend(["-m", "10", "-t", "1"])
+                except (IOError, OSError): pass
             else:
-                # For HDDs
-                format_opts.extend([
-                    "-O", "extra_attr,inode_checksum,sb_checksum",  # Enable checksums for reliability
-                    "-w", "4096",  # 4K sector size
-                    "-m", "2"      # 2% over-provisioning is enough for HDDs
-                ])
+                format_opts.extend(["-O", "extra_attr,inode_checksum,sb_checksum", "-w", "4096", "-m", "2"])
         except (IOError, OSError):
-            # Fallback to basic options if we can't determine device type
-            format_opts.extend([
-                "-O", "extra_attr,inode_checksum,sb_checksum",  # Enable checksums for reliability
-                "-w", "4096",  # 4K sector size
-                "-m", "5"      # 5% over-provisioning
-            ])
-        
-        # Add label if provided
+            format_opts.extend(["-O", "extra_attr,inode_checksum,sb_checksum", "-w", "4096", "-m", "5"])
+
         if label:
             format_opts.extend(["-l", label])
         
-        # Format the partition
         cmd = [command_mkf2fs] + format_opts + [partition]
         utils.print_with_color(_("Running: {0}").format(" ".join(cmd)), "green" if utils.verbose else None)
         
@@ -772,8 +468,134 @@ class F2fsFilesystemHandler(FilesystemHandler):
             utils.print_with_color(result.stderr, "red")
             return 1
         
-        # Validate the filesystem
         if not cls.validate_filesystem(partition):
             return 1
-            
         return 0
+
+    @classmethod
+    def validate_filesystem(cls, partition):
+        utils.check_kill_signal()
+        utils.print_with_color(_("Validating F2FS filesystem..."), "green")
+        fsck_f2fs_cmd = utils.check_command("fsck.f2fs")
+        if not fsck_f2fs_cmd:
+            utils.print_with_color(_("Warning: fsck.f2fs command not found. Skipping F2FS validation."), "yellow")
+            return True
+
+        cmd = [fsck_f2fs_cmd, "-f", partition]
+        utils.print_with_color(_("Running: {0}").format(" ".join(cmd)), "blue" if utils.verbose else None)
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            utils.print_with_color(_("Error: F2FS filesystem validation failed for {0}:").format(partition), "red")
+            utils.print_with_color(result.stdout, "red")
+            utils.print_with_color(result.stderr, "red")
+            return False
+
+        utils.print_with_color(_("F2FS filesystem validation passed for {0}.").format(partition), "green")
+        return True
+
+    @classmethod
+    def check_dependencies(cls):
+        missing = []
+        if not utils.check_command("mkfs.f2fs"):
+            missing.append("f2fs-tools (provides mkfs.f2fs)")
+        if not utils.check_command("fsck.f2fs"):
+            missing.append("f2fs-tools (provides fsck.f2fs)")
+
+        if "f2fs-tools (provides mkfs.f2fs)" in missing and "f2fs-tools (provides fsck.f2fs)" in missing:
+            missing = ["f2fs-tools"]
+        elif "f2fs-tools (provides mkfs.f2fs)" in missing:
+             missing = ["f2fs-tools (for mkfs.f2fs)"]
+        elif "f2fs-tools (provides fsck.f2fs)" in missing:
+             missing = ["f2fs-tools (for fsck.f2fs)"]
+        return (len(missing) == 0, missing)
+
+class BtrfsFilesystemHandler(FilesystemHandler):
+    """Handler for BTRFS filesystem operations - STUB"""
+    @classmethod
+    def name(cls): return "BTRFS"
+    @classmethod
+    def supports_file_size_greater_than_4gb(cls): return True
+    @classmethod
+    def parted_fs_type(cls): return "btrfs"
+
+    @classmethod
+    def format_partition(cls, partition, label):
+        utils.check_kill_signal()
+        utils.print_with_color(_("Creating BTRFS filesystem..."), "green")
+        command_mkbtrfs = utils.check_command("mkfs.btrfs")
+        if not command_mkbtrfs:
+            utils.print_with_color(_("Error: mkfs.btrfs command not found"), "red")
+            return 1
+
+        cmd = [command_mkbtrfs, "-f"]
+        if label: cmd.extend(["-L", label])
+        cmd.append(partition)
+
+        utils.print_with_color(_("Running: {0}").format(" ".join(cmd)), "blue" if utils.verbose else None)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            utils.print_with_color(_("Error: Unable to create BTRFS filesystem:"), "red")
+            utils.print_with_color(result.stdout, "red")
+            utils.print_with_color(result.stderr, "red")
+            return 1
+
+        utils.print_with_color(_("BTRFS filesystem created on {0} (basic stub).").format(partition), "green")
+        # Add validate_filesystem call when implemented for BTRFS if desired
+        return 0
+
+    @classmethod
+    def check_dependencies(cls):
+        missing = []
+        if not utils.check_command("mkfs.btrfs"):
+            missing.append("btrfs-progs")
+        return (len(missing) == 0, missing)
+
+# --- Registration of Handlers and Factory Function ---
+
+FILESYSTEM_HANDLERS_MAP = {
+    "FAT": FatFilesystemHandler,
+    "FAT32": FatFilesystemHandler,
+    "NTFS": NtfsFilesystemHandler,
+    "EXFAT": ExfatFilesystemHandler,
+    "F2FS": F2fsFilesystemHandler,
+    "BTRFS": BtrfsFilesystemHandler,
+}
+
+def get_filesystem_handler(fs_type_str):
+    fs_type_upper = fs_type_str.upper()
+    handler_class = FILESYSTEM_HANDLERS_MAP.get(fs_type_upper)
+    if not handler_class:
+        raise ValueError(f"Unsupported filesystem type: {fs_type_str}")
+    return handler_class
+
+def get_optimal_filesystem_for_iso(source_fs_mountpoint):
+    has_large_files, _, _ = utils.check_fat32_filesize_limitation_detailed(source_fs_mountpoint)
+    available_handlers = get_available_filesystem_handlers()
+
+    if has_large_files:
+        for fs_pref in ["EXFAT", "NTFS", "F2FS", "BTRFS"]:
+            if fs_pref in available_handlers:
+                return fs_pref
+        return "FAT32"
+    else:
+        if "FAT32" in available_handlers:
+            return "FAT32"
+        for fs_pref in ["EXFAT", "NTFS", "F2FS", "BTRFS"]:
+            if fs_pref in available_handlers:
+                return fs_pref
+
+    utils.print_with_color(_("CRITICAL: No suitable filesystem formatters found! Please install dosfstools, ntfs-3g, exfatprogs, or f2fs-tools."), "red")
+    raise RuntimeError(_("No suitable filesystem formatters found."))
+
+def get_available_filesystem_handlers():
+    available = []
+    for name_key, handler_class in FILESYSTEM_HANDLERS_MAP.items(): # Iterate over map keys
+        # Get the actual handler class from the map
+        actual_handler_class = FILESYSTEM_HANDLERS_MAP[name_key]
+        handler_name = actual_handler_class.name()
+        if handler_name not in available:
+            is_avail, _ = actual_handler_class.check_dependencies()
+            if is_avail:
+                available.append(handler_name)
+    return available

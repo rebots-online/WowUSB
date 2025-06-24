@@ -18,9 +18,10 @@ from typing import List, Dict, Optional, Tuple, Any
 # Import WowUSB modules
 import WowUSB.utils as utils
 import WowUSB.filesystem_handlers as fs_handlers
+import WowUSB.miscellaneous as miscellaneous # Added for i18n
 
 # Internationalization
-_ = utils.i18n
+_ = miscellaneous.i18n # Corrected: gettext should come from miscellaneous
 
 class MultiBootManager:
     """Manager for multi-boot functionality"""

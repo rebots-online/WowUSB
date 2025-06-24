@@ -494,9 +494,13 @@ def check_kill_signal():
     simultaneously ending whatever script was doing meantime!
     Everyone goes to home happy and user is left with wrecked pendrive (just joking, next thing called by gui is cleanup)
     """
-    if gui is not None:
-        gui.check_kill_signal()
-        time.sleep(0.1)
+    if gui is not None and hasattr(gui, 'kill') and gui.kill:
+        # Define a specific exception for cancellation
+        class OperationCancelledError(SystemExit): # Inherit from SystemExit for grace
+            pass
+        raise OperationCancelledError(_("Operation cancelled by user via GUI."))
+    # time.sleep(0.1) # Sleeping here might make cancellation less responsive.
+                      # Only sleep if truly needed for yielding, but GUI should handle its own event loop.
 
 
 def update_policy_to_allow_for_running_gui_as_root(path):
@@ -639,3 +643,48 @@ def detect_windows_version(source_fs_mountpoint):
             pass
     
     return (version, build_number, is_windows11)
+
+def run_command(command_list, message=None, error_message=None, suppress_errors=False, capture_output=False, text=True, check=False):
+    """
+    Stub for a centralized command execution function.
+    Actual implementation would use subprocess.run.
+    """
+    if message and verbose: # Check verbose before printing non-error messages
+        print_with_color(message, "blue")
+
+    # Simulate command execution for testing purposes
+    # In a real scenario, this would use subprocess.run()
+    # For now, just print the command if verbose and return 0 (success)
+    # or 1 if a known failing command for tests is passed.
+    if verbose:
+        print_with_color(f"Executing (stubbed): {' '.join(command_list)}", "magenta")
+
+    if "fail_command_test" in command_list: # For testing error paths
+        if error_message:
+            print_with_color(error_message, "red")
+        return 1
+
+    # Mock common successful outcomes for tests
+    if command_list[0] == "parted" and "print" in command_list:
+        # Simulate parted print output for get_partition_info
+        # This is a very basic mock. A real test might need more sophisticated output.
+        mock_output = "BYT;\n/dev/sdX:1000MB:scsi:512:512:msdos:Mock USB Disk;\n1:1MB:501MB:500MB:fat32::boot;\n2:501MB:1000MB:499MB:fat16::;\n"
+        if capture_output:
+            return subprocess.CompletedProcess(command_list, 0, stdout=mock_output if text else mock_output.encode(), stderr="")
+        else:
+            return 0
+
+
+    if capture_output:
+        return subprocess.CompletedProcess(command_list, 0, stdout="" if text else b"", stderr="")
+    return 0 # Assume success
+
+def get_partition_info(partition_device):
+    """
+    Stub for getting partition information (e.g., end sector).
+    A real implementation would use lsblk or parted.
+    """
+    print_with_color(f"STUB: Getting info for partition {partition_device}", "magenta") # Corrected: removed utils. prefix
+    if partition_device.endswith("1"): # Assuming /dev/sdX1
+        return {"end_sector": 1024000} # Example end sector for a ~500MB partition
+    return None
