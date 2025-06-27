@@ -20,10 +20,8 @@ package_data = {
     'WowUSB': [
         'locale/*/LC_MESSAGES/*.mo',
         'data/*',
-        'data/*/*',
-        'data/bootloaders/*',
-        'data/drivers/*',
-        'data/scripts/*'
+        'data/*/*', # This covers data/bootloaders, data/drivers, data/scripts
+        'data/grub-themes/wowusb/*' # Specifically include theme files
     ],
 }
 
@@ -31,15 +29,27 @@ package_data = {
 install_requires = [
     'termcolor>=1.1.0',
     'wxPython>=4.0.0',
+    # Jinja2 is not used by current grub_manager.py, f-strings are used instead.
+    # If Jinja2 were to be used for templates:
+    # 'Jinja2>=3.0',
 ]
 
-# Define filesystem tool dependencies
-filesystem_tools = {
-    'fat32': ['dosfstools'],
-    'ntfs': ['ntfs-3g'],
-    'exfat': ['exfat-utils', 'exfatprogs'],
-    'f2fs': ['f2fs-tools'],
-    'btrfs': ['btrfs-progs'],
+# Define filesystem tool dependencies (for documentation and potential checks)
+# These are system dependencies, not Python packages installed by pip.
+SYSTEM_DEPENDENCIES_INFO = {
+    'Core': ['parted', 'wipefs', 'grub2-common', 'grub-pc-bin', 'grub-efi-amd64-bin', 'p7zip-full'],
+    'Filesystems': {
+        'fat32': ['dosfstools'],
+        'ntfs': ['ntfs-3g'],
+        'exfat': ['exfat-utils | exfatprogs'], # Use | to denote alternatives
+        'f2fs': ['f2fs-tools'],
+        'btrfs': ['btrfs-progs'],
+    },
+    'Multiboot_Linux_Install': {
+        'sgdisk': ['gdisk'], # sgdisk is often in gdisk package
+        'debootstrap': ['debootstrap'], # For Debian/Ubuntu full install
+        'pacstrap': ['arch-install-scripts'], # For Arch full install
+    }
 }
 
 # Define entry points

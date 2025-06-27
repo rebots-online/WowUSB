@@ -1,0 +1,70 @@
+# WowUSB GRUB Theme
+# More settings will be added here
+
+title-text: "WowUSB Multiboot"
+title-font: "DejaVu Sans Regular 24"
+title-color: "#FFFFFF"
+message-font: "DejaVu Sans Regular 14"
+message-color: "#CCCCCC"
+
+# Background image (optional)
+# desktop-image: "background.png"
+
+# Menu item appearance
+item_font: "DejaVu Sans Mono Regular 16"
+item_color: "#E0E0E0"
+selected_item_font: "DejaVu Sans Mono Bold 16"
+selected_item_color: "#10FF10"
+selected_item_pixmap_style: "select_*.png" # If using selection indicators
+
+# You can add more properties like:
+# - terminal-box attributes for borders
+# - progress_bar attributes
+# - boot_menu attributes for positioning and item spacing
+# - icons for menu entries
+# Refer to GRUB manual for gfxmenu theming.
+
++ boot_menu {
+  left = 15%
+  width = 70%
+  top = 20%
+  height = 60%
+  item_font = "DejaVu Sans Regular 16"
+  item_color = "#cccccc"
+  selected_item_font = "DejaVu Sans Bold 16"
+  selected_item_color = "#ffffff"
+  selected_item_background_color = "#333399"
+  item_spacing = 10
+  icon_width = 32
+  icon_height = 32
+}
+
++ progress_bar {
+  id = "__timeout__"
+  left = 20%
+  top = 85%
+  width = 60%
+  height = 20
+  font = "DejaVu Sans Regular 12"
+  text_color = "#ffffff"
+  fg_color = "#00ff00"
+  bg_color = "#333333"
+  text = "Booting in %d seconds..."
+}
+
+# Example of a list class for menu entries with icons
+# + list_frame {
+#   left = 20% top = 25% width = 60% height = 50%
+#   + label { text = "Select an option:" left = 0 top = 0 }
+#   + list {
+#     left = 5 top = 30
+#     item_height = 25
+#     item_spacing = 5
+#     item_icon_space = 5
+#     item_padding = 2
+#   }
+# }
+# You would then assign menu entries to have a class like `list_frame_item_class`
+# and define icons using `CLASS_NAME_icon: "path/to/icon.png"`
+# e.g. `windows_icon: "/boot/grub/themes/wowusb/win_icon.png"`
+# and in grub.cfg: `menuentry "Windows" --class windows ...`

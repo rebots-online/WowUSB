@@ -573,29 +573,51 @@ def get_optimal_filesystem_for_iso(source_fs_mountpoint):
     has_large_files, _, _ = utils.check_fat32_filesize_limitation_detailed(source_fs_mountpoint)
     available_handlers = get_available_filesystem_handlers()
 
+    # Desired order of preference, especially for payload/data partition
+    # F2FS -> exFAT -> NTFS -> BTRFS -> FAT32
+    preferred_order_large_files = ["F2FS", "EXFAT", "NTFS", "BTRFS"]
+    preferred_order_no_large_files = ["F2FS", "EXFAT", "FAT32", "NTFS", "BTRFS"] # FAT32 is good if no large files
+
     if has_large_files:
-        for fs_pref in ["EXFAT", "NTFS", "F2FS", "BTRFS"]:
+        for fs_pref in preferred_order_large_files:
             if fs_pref in available_handlers:
+                utils.print_with_color(_("Selected {0} for large file support.").format(fs_pref), "blue")
                 return fs_pref
-        return "FAT32"
-    else:
+        # Fallback if none of the preferred for large files are available but FAT32 is (though it won't work)
         if "FAT32" in available_handlers:
-            return "FAT32"
-        for fs_pref in ["EXFAT", "NTFS", "F2FS", "BTRFS"]:
+             utils.print_with_color(_("Warning: Large files present, but only FAT32 is available. This may lead to errors."), "yellow")
+             return "FAT32"
+    else: # No large files
+        for fs_pref in preferred_order_no_large_files:
             if fs_pref in available_handlers:
+                utils.print_with_color(_("Selected {0} (no large files detected).").format(fs_pref), "blue")
                 return fs_pref
 
-    utils.print_with_color(_("CRITICAL: No suitable filesystem formatters found! Please install dosfstools, ntfs-3g, exfatprogs, or f2fs-tools."), "red")
-    raise RuntimeError(_("No suitable filesystem formatters found."))
+    # If no suitable filesystem is found among the preferred ones
+    utils.print_with_color(_("CRITICAL: No suitable filesystem formatters found! Please install f2fs-tools, exfatprogs, ntfs-3g, btrfs-progs or dosfstools."), "red")
+    # Attempt to return *any* available handler if the logic above somehow fails to select one
+    # This part should ideally not be reached if preferred lists are comprehensive
+    if available_handlers:
+        fallback_fs = available_handlers[0]
+        utils.print_with_color(_("Warning: Falling back to the first available filesystem: {0}").format(fallback_fs), "yellow")
+        return fallback_fs
+
+    raise RuntimeError(_("No suitable filesystem formatters found, and no available handlers to fallback to."))
 
 def get_available_filesystem_handlers():
     available = []
-    for name_key, handler_class in FILESYSTEM_HANDLERS_MAP.items(): # Iterate over map keys
-        # Get the actual handler class from the map
-        actual_handler_class = FILESYSTEM_HANDLERS_MAP[name_key]
-        handler_name = actual_handler_class.name()
-        if handler_name not in available:
-            is_avail, _ = actual_handler_class.check_dependencies()
-            if is_avail:
-                available.append(handler_name)
+    # Ensure consistent order for checking, aligning with potential preference
+    handler_keys_ordered = ["F2FS", "EXFAT", "NTFS", "BTRFS", "FAT32", "FAT"]
+
+    processed_names = set()
+
+    for name_key in handler_keys_ordered:
+        if name_key in FILESYSTEM_HANDLERS_MAP:
+            handler_class = FILESYSTEM_HANDLERS_MAP[name_key]
+            handler_name = handler_class.name() # FAT32, NTFS, etc.
+            if handler_name not in processed_names:
+                is_avail, _ = handler_class.check_dependencies()
+                if is_avail:
+                    available.append(handler_name)
+                processed_names.add(handler_name)
     return available
