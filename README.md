@@ -10,21 +10,24 @@ _A Linux program to create a Windows USB stick installer from a real Windows DVD
 
 This package contains two programs:
 
-* **wowusb**: A command-line utility that enables you to create your own bootable Windows installation USB storage device from an existing Windows Installation disc or disk image
-* **woeusbgui**: Graphic version of wowusb
+* **wowusb**: A command-line utility that enables you to create your own bootable Windows installation USB storage device or a powerful multiboot USB.
+* **woeusbgui**: Graphic version of wowusb.
 
 ## Features
 
-* Support for Windows Vista, Windows 7, Window 8.x, Windows 10, and Windows 11
-* Support for multiple filesystems with automatic selection based on ISO content:
-  * **FAT32**: Default for maximum compatibility (with 4GB file size limit)
-  * **NTFS**: Support for larger files with integrated UEFI:NTFS bootloader
-  * **exFAT**: Combined large file support and cross-platform compatibility
-  * **F2FS**: Flash-friendly filesystem option for better performance
-  * **BTRFS**: Advanced Linux filesystem with additional features
-* Windows-To-Go support for creating portable Windows installations that run directly from USB
-* Both Legacy/MBR-style and UEFI boot modes
-* Automatic detection of large files (>4GB) and filesystem selection
+*   Support for Windows Vista, Windows 7, Window 8.x, Windows 10, and Windows 11 for standard USB creation.
+*   **Multiboot Capabilities:**
+    *   Create a GRUB2-based multiboot USB drive.
+    *   Include a Windows-To-Go installation on a dedicated NTFS partition.
+    *   Add multiple Linux ISOs for direct booting from the GRUB menu.
+    *   Optionally perform a full Linux installation (Debian, Ubuntu, Arch) to an F2FS partition, also bootable from GRUB.
+    *   Customizable GPT partition layout: ESP (FAT32), BIOS_GRUB, Windows (NTFS), Payload/Data (F2FS default).
+*   Advanced Filesystem Support:
+    *   Automatic selection based on ISO content for standard mode: FAT32, NTFS, exFAT, F2FS, BTRFS.
+    *   F2FS is prioritized for payload partitions in multiboot mode, with fallback to exFAT, NTFS, BTRFS.
+*   Windows-To-Go support (both in standard mode and as part of multiboot).
+*   Boots in both Legacy/MBR-style (via `i386-pc` GRUB) and UEFI mode (via `x86_64-efi` GRUB).
+*   Automatic detection of large files (>4GB) for appropriate filesystem selection in standard mode.
 
 This project is a significant enhancement of the original [WoeUSB](https://github.com/slacka/WoeUSB) and [WoeUSB-ng](https://github.com/WoeUSB/WoeUSB-ng) projects.
 
@@ -34,7 +37,15 @@ This project is a significant enhancement of the original [WoeUSB](https://githu
 
 ```shell
 # Install dependencies (example for Debian/Ubuntu)
-sudo apt install git p7zip-full python3-pip python3-wxgtk4.0 grub2-common grub-pc-bin parted dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs
+# Core:
+sudo apt install git p7zip-full python3-pip python3-wxgtk4.0 parted wipefs
+# Filesystems:
+sudo apt install dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs
+# GRUB & Multiboot:
+sudo apt install grub-common grub-pc-bin grub-efi-amd64-bin gdisk # gdisk for sgdisk
+# Optional for Full Linux Install:
+# sudo apt install debootstrap # For Debian/Ubuntu
+# For Arch, ensure 'arch-install-scripts' (provides pacstrap) is installed from Arch repos.
 
 # Install WowUSB-DS9
 sudo pip3 install WowUSB-DS9
@@ -44,77 +55,98 @@ sudo pip3 install WowUSB-DS9
 
 ```shell
 # Download the latest .deb package from the releases page
-wget https://github.com/rebots-online/WowUSB/releases/latest/download/wowusb-ds9_0.3.0-1_all.deb
+wget https://github.com/rebots-online/WowUSB/releases/latest/download/wowusb-ds9_X.Y.Z-1_all.deb # Replace X.Y.Z
 
-# Install the package
-sudo apt install ./wowusb-ds9_0.3.0-1_all.deb
+# Install the package (this should pull in most dependencies if correctly packaged)
+sudo apt install ./wowusb-ds9_X.Y.Z-1_all.deb
 ```
 
 ### Option 3: Arch Linux
 
+WowUSB-DS9 might be available in the AUR. Check for `wowusb-ds9` or a similar name.
 ```shell
-yay -S wowusb-ds9
+yay -S wowusb-ds9 # Or your preferred AUR helper
 ```
+Ensure system dependencies like `grub`, `gdisk`, `arch-install-scripts` (for full Arch install) are met.
 
 ### Option 4: Generic Linux Package (tar.gz)
 
-```shell
-# Download the latest tar.gz package from the releases page
-wget https://github.com/rebots-online/WowUSB/releases/latest/download/wowusb-ds9-0.3.0.tar.gz
-
-# Extract the package
-tar -xzf wowusb-ds9-0.3.0.tar.gz
-
-# Run the installation script
-cd wowusb-ds9-0.3.0
-sudo ./install.sh
-```
+Refer to the installation script within the tarball and ensure all dependencies from the "Dependency Requirements" table are met.
 
 ### Option 5: Installation from Source Code
 
+Clone the repository and run `sudo pip3 install .`. Ensure all dependencies from the "Dependency Requirements" table are met.
 ```shell
-# Install dependencies (example for Debian/Ubuntu)
-sudo apt install git p7zip-full python3-pip python3-wxgtk4.0 grub2-common grub-pc-bin parted dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs
-
-# Clone the repository
+# Example for Debian/Ubuntu:
+sudo apt install git p7zip-full python3-pip python3-wxgtk4.0 parted wipefs dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs grub-common grub-pc-bin grub-efi-amd64-bin gdisk debootstrap
 git clone https://github.com/rebots-online/WowUSB.git
 cd WowUSB
-
-# Install from source
 sudo pip3 install .
 ```
 
 ## Dependency Requirements
 
-| Distribution   | Required Packages                                                                                |
-|----------------|--------------------------------------------------------------------------------------------------|
-| Debian/Ubuntu  | `python3-pip python3-wxgtk4.0 grub2-common grub-pc-bin parted dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs p7zip-full` |
-| Fedora         | `python3-pip python3-wxpython4 grub2-common grub2-tools parted dosfstools ntfs-3g exfatprogs f2fs-tools btrfs-progs p7zip p7zip-plugins` |
-| Arch Linux     | `python-pip python-wxpython grub parted dosfstools ntfs-3g exfatprogs f2fs-tools btrfs-progs p7zip` |
-| openSUSE       | `python3-pip python3-wxPython grub2 parted dosfstools ntfs-3g exfatprogs f2fs-tools btrfs-progs p7zip` |
+This table lists key system packages. Python dependencies (`termcolor`, `wxPython`) are handled by `pip`.
+
+| Feature Area                | Debian/Ubuntu Packages                                                                 | Fedora Packages                                                                                      | Arch Linux Packages                                                                     |
+|-----------------------------|----------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| **Core & GUI**              | `python3-pip python3-wxgtk4.0 p7zip-full parted wipefs`                                  | `python3-pip python3-wxpython4 p7zip p7zip-plugins parted wipefs`                                        | `python-pip python-wxpython p7zip parted wipefs`                                          |
+| **Filesystems**             | `dosfstools ntfs-3g exfat-utils f2fs-tools btrfs-progs`                                  | `dosfstools ntfs-3g exfatprogs f2fs-tools btrfs-progs`                                                 | `dosfstools ntfs-3g exfatprogs f2fs-tools btrfs-progs`                                    |
+| **GRUB & Multiboot Core**   | `grub-common grub-pc-bin grub-efi-amd64-bin gdisk`                                       | `grub2-common grub2-tools grub2-efi-x64-cdboot gdisk` (ensure grub2-tools provides grub-install etc.) | `grub gdisk` (ensure efibootmgr is also installed for GRUB EFI)                       |
+| **Full Linux Install (Opt.)**| `debootstrap`                                                                          | `debootstrap` (if installing Debian/Ubuntu)                                                          | `arch-install-scripts` (if installing Arch)                                             |
+
+*Note: Package names can vary slightly between distributions and versions. `exfat-utils` might be `exfatprogs` on newer systems.*
+*`gdisk` provides `sgdisk`. `wipefs` is usually part of `util-linux`.*
 
 ## Usage
 
 ### Command Line Interface
 
-Basic usage:
+**Standard (Single Windows Install) Mode:**
 
 ```shell
-wowusb --device source.iso /dev/sdX
+wowusb --device <Windows_ISO_or_DVD_Device> <Target_USB_Device>
+# Example: wowusb --device windows10.iso /dev/sdb
 ```
 
-Advanced options:
+Standard mode advanced options:
 
 ```shell
-# Specify filesystem type
-wowusb --device source.iso /dev/sdX --target-filesystem NTFS
+# Specify filesystem for the Windows partition
+wowusb --device windows10.iso /dev/sdb --target-filesystem NTFS
 
-# Create Windows-To-Go installation
-wowusb --device source.iso /dev/sdX --wintogo
+# Create a standard Windows-To-Go USB (not multiboot)
+wowusb --device windows10.iso /dev/sdb --wintogo
 
-# Format only a specific partition
-wowusb --partition source.iso /dev/sdX1
+# Install to an existing partition (less common for Windows)
+wowusb --partition windows10.iso /dev/sdb1
 ```
+
+**Multiboot Mode:**
+
+```shell
+wowusb --multiboot --target <Target_USB_Device> \
+       --win-iso <Path_to_Windows_ISO> \
+       --win-size-gb <Size_for_Windows_Partition> \
+       --linux-iso <Path_to_Linux_ISO_1> \
+       --linux-iso <Path_to_Linux_ISO_2> \
+       --payload-fs <F2FS|EXFAT|NTFS|BTRFS> \
+       --full-linux-install <ubuntu|arch|debian> \
+       --full-linux-release <Distro_Release_Codename> \
+       --http-proxy <Proxy_URL_for_Linux_Install>
+```
+
+Example for Multiboot:
+```shell
+# Create a multiboot USB with Windows 10 To-Go, an Ubuntu ISO, and a full Arch Linux install
+sudo wowusb --multiboot --target /dev/sdc \
+            --win-iso /path/to/windows10.iso --win-size-gb 64 \
+            --linux-iso /path/to/ubuntu-desktop.iso \
+            --full-linux-install arch --payload-fs F2FS \
+            --verbose
+```
+
+*   Use `wowusb --help` to see all available options.
 
 ### Graphical Interface
 
@@ -146,21 +178,32 @@ sudo apt remove wowusb-ds9
 sudo ./uninstall.sh
 ```
 
-## Advanced Filesystem Features
+## Advanced Filesystem and Multiboot Features
 
-WowUSB-DS9 automatically detects if your Windows ISO contains files larger than 4GB and selects the appropriate filesystem:
+### Standard Mode Filesystem Selection
+WowUSB-DS9 automatically detects if your Windows ISO contains files larger than 4GB and selects the appropriate filesystem for the main Windows partition in standard mode:
 
-| Filesystem | Used When                    | Requirements                | Features                                                             |
-|------------|------------------------------|-----------------------------|----------------------------------------------------------------------|
-| FAT32      | Default for maximum compatibility | dosfstools package           | Most compatible, 4GB file size limit                                |
-| NTFS       | ISO contains files >4GB      | ntfs-3g package             | Windows-native, large file support, slower on flash drives          |
-| exFAT      | ISO contains files >4GB      | exfat-utils/exfatprogs package | Optimized for flash drives, large file support, good cross-platform compatibility |
-| F2FS       | ISO contains files >4GB      | f2fs-tools package          | Flash-friendly, optimized for flash storage performance             |
-| BTRFS      | ISO contains files >4GB      | btrfs-progs package         | Advanced features like compression and snapshots                    |
+| Filesystem | Used When                                     | Requirements                     | Features                                                             |
+|------------|-----------------------------------------------|----------------------------------|----------------------------------------------------------------------|
+| FAT32      | Default if no large files & FAT32 available   | `dosfstools`                       | Most compatible, 4GB file size limit                                |
+| F2FS       | Preferred if available (large or small files) | `f2fs-tools`                     | Flash-friendly, good performance, large file support                  |
+| exFAT      | Preferred fallback if F2FS not available    | `exfat-utils` or `exfatprogs`    | Optimized for flash, large files, good cross-platform compatibility   |
+| NTFS       | Fallback if F2FS/exFAT not available        | `ntfs-3g`                        | Windows-native, large files, slower on flash without UEFI:NTFS driver |
+| BTRFS      | Fallback if others not available              | `btrfs-progs`                    | Advanced features, large files                                      |
 
-The filesystem is automatically selected based on the detected content and available tools, with a preference order of exFAT > NTFS > F2FS > BTRFS > FAT32.
+The selection order for standard mode (if large files are present or `AUTO` is chosen) is generally: F2FS -> exFAT -> NTFS -> BTRFS. If no large files, FAT32 is also considered early.
 
-For detailed information on implementation, see the [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) file.
+### Multiboot Mode Partitioning and Filesystems
+In `--multiboot` mode, WowUSB-DS9 creates a specific GPT partition layout:
+1.  **EFI System Partition (ESP):** 512MB, FAT32. Contains GRUB EFI bootloader and common GRUB files (config, themes, Linux ISOs).
+2.  **BIOS Boot Partition:** 1MB. For GRUB's BIOS bootloader code (`core.img`).
+3.  **Windows-To-Go Partition:** NTFS, user-defined size (default 64GB). For the Windows installation.
+4.  **Payload/Data Partition:** Default F2FS, uses remaining space. Can be changed with `--payload-fs`. This partition is used for the full Linux installation if selected, or as a general data partition.
+
+### Full F2FS-based Linux Installation
+When using `--full-linux-install` with `--multiboot`, a basic version of the selected distribution (Ubuntu, Debian, or Arch) is installed onto the F2FS (or chosen payload filesystem) partition. This installation is made bootable via the GRUB menu.
+
+For detailed information on implementation, see the [TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) file.
 
 ## Documentation
 
