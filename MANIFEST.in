@@ -26,34 +26,9 @@ recursive-include WowUSB/data/scripts *
 # Include test files
 recursive-include tests *
 
-# Prune build and distribution artifacts
-prune build
-prune dist
-prune *.egg-info
-
-# Prune virtual environment directories
-prune venv
-prune env
-prune .venv
-prune venv*
-prune env.*
-prune .env.*
-prune ENV
-
-# Exclude compiled Python files and cache
+# Exclude compiled Python files
 global-exclude *.py[cod]
 global-exclude __pycache__
 global-exclude *.so
-
-# Exclude common unwanted files
 global-exclude .DS_Store
-global-exclude Thumbs.db
-global-exclude ._*
-global-exclude .git*
-global-exclude *.log
-
-# Ensure woeusbgui is included if it's a script at that path.
-# If it's part of the WowUSB package (e.g. WowUSB/gui.py with a main function),
-# then entry_points in setup.py is the standard way to make it a script.
-# This line might be redundant if setup.py handles it via `scripts` or `entry_points`.
-include WowUSB/woeusbgui
+include WoeUSB/woeusbgui
