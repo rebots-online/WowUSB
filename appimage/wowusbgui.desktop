@@ -1,0 +1,12 @@
+#!/usr/bin/env xdg-open
+[Desktop Entry]
+Name=WowUSB-DS9
+Comment=Create bootable Windows USB drives
+Exec=wowusbgui
+Icon=wowusbgui
+Terminal=false
+Type=Application
+Categories=System;Utility;
+Keywords=Windows;USB;Bootable;Installation;
+StartupNotify=true
+Categories=Utility;

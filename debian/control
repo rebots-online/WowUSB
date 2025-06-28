@@ -23,14 +23,19 @@ Depends: ${python3:Depends},
          python3-termcolor,
          grub2-common,
          grub-pc-bin,
+         grub-efi-amd64-bin, # Added for UEFI GRUB
          parted,
+         gdisk, # Added for sgdisk (GPT support)
+         wipefs, # Added for wiping partition tables (often in util-linux)
          dosfstools,
          ntfs-3g,
          exfat-utils | exfatprogs,
          f2fs-tools,
          btrfs-progs,
          p7zip-full
-Recommends: polkit
+Recommends: polkit,
+            debootstrap, # For full Debian/Ubuntu install feature
+            arch-install-scripts # For full Arch Linux install feature (provides pacstrap)
 Suggests: gparted
 Description: Create bootable Windows USB drives with advanced features
  WowUSB-DS9 is a Linux utility that enables you to create your own bootable

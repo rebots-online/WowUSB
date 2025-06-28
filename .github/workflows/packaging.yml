@@ -1,0 +1,159 @@
+name: WowUSB-DS9 Packaging CI
+
+on:
+  push:
+    branches: [ main, master, develop ] # Adjust branches as needed
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Use a generic version or specify e.g., 3.8
+
+      - name: Install Python dependencies (for linting/testing if any)
+        run: |
+          python -m pip install --upgrade pip
+          # pip install flake8 pytest # Example, if project uses these
+          # pip install -r requirements-dev.txt # If there's a dev requirements file
+
+      - name: Linting (Placeholder)
+        run: |
+          echo "Linting step placeholder. Add actual linting commands here."
+          # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics # Example
+          # flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics # Example
+
+      - name: Testing (Placeholder)
+        run: |
+          echo "Testing step placeholder. Add actual test commands here."
+          # pytest # Example
+
+  build-deb:
+    name: Build Debian Package
+    runs-on: ubuntu-latest
+    needs: lint-test # Depends on lint-test job
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Debian build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y devscripts equivs # For mk-build-deps
+          # Install build dependencies from debian/control
+          # Using equivs to generate a dummy package with build-deps
+          sudo mk-build-deps -i debian/control -t "apt-get -y --no-install-recommends" -r
+
+      - name: Build .deb package
+        run: |
+          ./scripts/build_deb.sh
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wowusb-ds9-deb
+          path: |
+            dist/*.deb
+            dist/*.buildinfo
+            dist/*.changes
+          if-no-files-found: error # Error if no files are found
+
+  build-appimage:
+    name: Build AppImage
+    runs-on: ubuntu-latest
+    needs: lint-test # Depends on lint-test job
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python (for build script)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install AppImage build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse libfuse2 wget # For running appimagetool and its deps
+          # wxPython build dependencies (might be needed if wxPython is built from source by pip)
+          # This list can be extensive. Example for wxPython on Ubuntu:
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            build-essential \
+            libsdl2-dev \
+            libjpeg-dev \
+            libtiff-dev \
+            libnotify-dev \
+            freeglut3-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libwebkit2gtk-4.0-dev \
+            libxtst-dev
+          python -m pip install --upgrade pip wheel setuptools
+          # Inkscape or Imagemagick for icon conversion if build_appimage.sh relies on it
+          # and the runner doesn't have it.
+          sudo apt-get install -y inkscape imagemagick
+
+      - name: Build AppImage
+        run: |
+          chmod +x packaging/build_appimage.sh
+          ./packaging/build_appimage.sh
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wowusb-ds9-appimage
+          path: "*.AppImage"
+          if-no-files-found: error
+
+  # Optional: Create a GitHub Release if a tag is pushed
+  # create-release:
+  #   name: Create GitHub Release
+  #   if: startsWith(github.ref, 'refs/tags/v') # Only run on version tags
+  #   runs-on: ubuntu-latest
+  #   needs: [build-deb, build-appimage]
+  #   permissions:
+  #     contents: write # Needed to create releases and upload assets
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Download .deb artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: wowusb-ds9-deb
+  #         path: dist/deb
+
+  #     - name: Download AppImage artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: wowusb-ds9-appimage
+  #         path: dist/appimage
+
+  #     - name: Create Release and Upload Assets
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         files: |
+  #           dist/deb/*.deb
+  #           dist/deb/*.buildinfo
+  #           dist/deb/*.changes
+  #           dist/appimage/*.AppImage
+  #         # draft: false
+  #         # prerelease: false
+  #         # fail_on_unmatched_files: true
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# Note: The create-release job is commented out as it's good practice for a separate
+# release workflow, but included here for completeness of the "publish artifacts" idea.
+# For this task, uploading to build artifacts is sufficient.
