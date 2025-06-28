@@ -1,14 +1,49 @@
-## Compiled object code
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 
-\.idea/
-doc/_build
-venv/
-venv3.11/
-WoeUSB_ng\.egg-info/
-dist/
-
+# Build artifacts
 build/
+dist/
+*.egg-info/
+sdist/
+develop-eggs/
+*.egg
+MANIFEST
 
-create_tarball
+# Virtual environments
+venv/
+env/
+.venv/
+venv*/
+env.*/
+.env.*/
+ENV/
+
+# IDE / Editor files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Documentation
+doc/_build/
+docs/_build/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Custom / Project specific
+WoeUSB_ng\.egg-info/ # Kept if specifically different from *.egg-info
+create_tarball # Assuming this is a generated file/script to ignore
 appmap.log
+
+# Notebooks
+.ipynb_checkpoints

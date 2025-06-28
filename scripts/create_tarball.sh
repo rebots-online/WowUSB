@@ -5,12 +5,20 @@
 set -e
 
 # Configuration
-VERSION="0.3.0"
-PACKAGE_NAME="wowusb-ds9"
-TARBALL_NAME="${PACKAGE_NAME}-${VERSION}"
-TEMP_DIR=$(mktemp -d)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Dynamically get version from setup.py
+VERSION=$(cd "$PROJECT_DIR"; python3 setup.py --version)
+if [ -z "$VERSION" ]; then
+    echo "Error: Could not determine version from setup.py"
+    exit 1
+fi
+
+PACKAGE_NAME="wowusb-ds9" # Should match setup.py name if possible
+TARBALL_NAME="${PACKAGE_NAME}-${VERSION}"
+TEMP_DIR=$(mktemp -d)
+
 
 # Print banner
 echo "====================================================="
