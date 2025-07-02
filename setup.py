@@ -16,7 +16,6 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 # Define package data to include
 package_data = {
-    'WoeUSB': ['locale/*/LC_MESSAGES/*.mo', 'data/*', 'data/*/*'],
     'WowUSB': [
         'locale/*/LC_MESSAGES/*.mo',
         'data/*',
@@ -55,10 +54,10 @@ SYSTEM_DEPENDENCIES_INFO = {
 # Define entry points
 entry_points = {
     'console_scripts': [
-        'wowusb=WowUSB.core:main',
+        'wowusb=WowUSB.wowusb:main',
     ],
     'gui_scripts': [
-        'wowusbgui=WowUSB.gui:main',
+        'wowusbgui=WowUSB.wowusbgui:main',
     ],
 }
 
