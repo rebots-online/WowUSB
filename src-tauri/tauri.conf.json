@@ -3,42 +3,21 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
-    "distDir": "../dist",
-    "withGlobalTauri": false
+    "distDir": "../dist"
   },
   "package": {
     "productName": "WowUSB-DS9",
-    "version": "1.01.28333333"
+    "version": "1.1.87214212",
+    "identifier": "com.rebots.wowusb.ds9",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   },
   "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": false,
-        "open": true,
-        "save": true
-      },
-      "fs": {
-        "all": false,
-        "readFile": true,
-        "writeFile": true,
-        "readDir": true,
-        "copyFile": true,
-        "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
-        "renameFile": true,
-        "exists": true,
-        "scope": ["$APPDATA", "$APPDATA/*", "$DOWNLOAD", "$DOWNLOAD/*", "$HOME", "$HOME/*", "$DESKTOP", "$DESKTOP/*", "$DOCUMENT", "$DOCUMENT/*", "$TEMP", "$TEMP/*", "$APPDATA", "$APPDATA/*", "$CONFIG", "$CONFIG/*", "$RESOURCE", "$RESOURCE/*"]
-      },
-      "notification": {
-        "all": true
-      }
-    },
     "bundle": {
       "active": true,
       "targets": "all",
@@ -49,67 +28,19 @@
         "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
-      ],
-      "deb": {
-        "depends": [
-          "libgtk-3-0",
-          "libwebkit2gtk-4.0-37",
-          "libappindicator3-1",
-          "libnotify4",
-          "xdg-user-dirs",
-          "libnss3"
-        ],
-        "useBootstrapper": false
-      },
-      "appimage": {
-        "bundleMediaFramework": false,
-        "useBootstrapper": false
-      },
-      "nsis": {
-        "displayLanguageSelector": false,
-        "allowDowngrades": false,
-        "installerIcon": "icons/icon.ico",
-        "installerHeaderIcon": "icons/icon.ico",
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true,
-        "allowToChangeInstallationDirectory": true
-      },
-      "windows": {
-        "wix": {
-          "language": ["en-US"],
-          "template": "main.wxs"
-        },
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      },
-      "macOS": {
-        "frameworks": [],
-        "minimumSystemVersion": "10.13",
-        "exceptionDomain": "",
-        "signingIdentity": null,
-        "providerShortName": null,
-        "entitlements": null
-      }
+      ]
+    }
+  },
+  "windows": {
+    "wix": {
+      "language": "1033",
+      "theme": "light",
+      "template": "main.wxs",
+      "template": "main.wxs"
     },
-    "security": {
-      "csp": null
-    },
-    "updater": {
-      "active": false
-    },
-    "windows": [
-      {
-        "fullscreen": false,
-        "resizable": true,
-        "title": "WowUSB-DS9",
-        "width": 900,
-        "height": 700,
-        "minWidth": 800,
-        "minHeight": 600,
-        "hiddenTitle": false,
-        "titleBarStyle": "Visible"
-      }
-    ]
+    "wix": {
+      "language": "1033",
+      "theme": "light"
+    }
   }
 }
