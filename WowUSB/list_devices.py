@@ -85,3 +85,71 @@ def dvd_drive():
         devices_list.append([optical_disk_drive_devfs_path, optical_disk_drive_devfs_path + " - " + model_content])
 
     return devices_list
+
+
+def list_devices():
+    """List all available USB and DVD devices"""
+    import sys
+
+    try:
+        usb_devices = usb_drive(show_all=True)
+        dvd_devices = dvd_drive()
+
+        print("Available devices:")
+        print("-" * 60)
+
+        if usb_devices:
+            print("USB Devices:")
+            for device in usb_devices:
+                print(f"  {device[1]}")
+
+        if dvd_devices:
+            print("DVD/CD-ROM Devices:")
+            for device in dvd_devices:
+                print(f"  {device[1]}")
+
+        if not usb_devices and not dvd_devices:
+            print("No removable devices found.")
+
+    except Exception as e:
+        print(f"Error listing devices: {e}")
+        sys.exit(1)
+
+
+def get_device_list():
+    """Get device list for GUI consumption"""
+    devices = []
+
+    try:
+        usb_devices = usb_drive(show_all=True)
+        for device in usb_devices:
+            # Parse device info to extract model and size
+            device_info = device[1]
+            if "(" in device_info and ")" in device_info:
+                # Extract device path, model, and size from string like "/dev/sdb(SanDisk Ultra, 14.5G)"
+                device_path = device[0]
+                info_part = device_info[device_info.find("(")+1:device_info.find(")")]
+                if ", " in info_part:
+                    model, size = info_part.split(", ", 1)
+                else:
+                    model = info_part
+                    size = "Unknown"
+
+                devices.append({
+                    'device': device_path,
+                    'size': size,
+                    'model': model,
+                    'type': 'usb'
+                })
+            else:
+                # Fallback for unexpected format
+                devices.append({
+                    'device': device[0],
+                    'size': 'Unknown',
+                    'model': device[1],
+                    'type': 'usb'
+                })
+    except Exception as e:
+        print(f"Error getting device list for GUI: {e}")
+
+    return devices

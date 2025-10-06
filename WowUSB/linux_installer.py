@@ -407,5 +407,3 @@ if __name__ == '__main__':
             #     print(f"You can delete the test image: {loop_device_img}")
             if os.path.exists(MOUNT_POINT) and not os.listdir(MOUNT_POINT): # Remove if empty
                  shutil.rmtree(MOUNT_POINT, ignore_errors=True)
-
-```

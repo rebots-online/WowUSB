@@ -429,5 +429,3 @@ if __name__ == '__main__':
 
     print("\nNote: For full install_grub testing, manual setup of a loop device or a dedicated test USB is recommended.")
     print("The generate_grub_cfg test created a file in /tmp/test_grub_boot/grub/grub.cfg")
-
-```
