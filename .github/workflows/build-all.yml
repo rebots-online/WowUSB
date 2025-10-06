@@ -1,0 +1,458 @@
+name: Build All Platforms
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create release artifacts'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+  NODE_VERSION: '20'
+
+jobs:
+  # Build information job
+  build-info:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.release.outputs.is_release }}
+      build_number: ${{ steps.build_number.outputs.build_number }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate build info
+      id: build_info
+      run: |
+        # Calculate epoch time
+        EPOCH_TIME=$(date +%s)
+
+        # Define base epoch (project start date: 2023-01-01 00:00:00 UTC)
+        BASE_EPOCH=1672531200
+
+        # Calculate monotonic build number (always increasing)
+        BUILD_NUMBER_RAW=$((EPOCH_TIME - BASE_EPOCH))
+
+        # Format as 5-digit number with leading zeros (minimum)
+        BUILD_NUMBER=$(printf "%05d" $BUILD_NUMBER_RAW)
+
+        # If it exceeds 5 digits, keep full number
+        if [ ${#BUILD_NUMBER} -gt 5 ]; then
+            BUILD_NUMBER=$BUILD_NUMBER_RAW
+        fi
+
+        # Read version from Cargo.toml or use defaults
+        if [ -f "src-tauri/Cargo.toml" ]; then
+          MAJOR_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | sed 's/version = "//' | sed 's/"//' | cut -d. -f1)
+          MINOR_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | sed 's/version = "//' | sed 's/"//' | cut -d. -f2)
+        else
+          MAJOR_VERSION="1"
+          MINOR_VERSION="01"
+        fi
+
+        # Ensure minor version is two digits
+        MINOR_VERSION=$(printf "%02d" $MINOR_VERSION)
+
+        # Construct version string
+        VERSION="v${MAJOR_VERSION}.${MINOR_VERSION}.${BUILD_NUMBER}"
+
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "major_version=$MAJOR_VERSION" >> $GITHUB_OUTPUT
+        echo "minor_version=$MINOR_VERSION" >> $ITHUB_OUTPUT
+        echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+        echo "raw_epoch=$EPOCH_TIME" >> $GITHUB_OUTPUT
+        echo "build_number_offset=$BUILD_NUMBER_RAW" >> $GITHUB_OUTPUT
+
+        # Debug output
+        echo "Base epoch: $BASE_EPOCH (2023-01-01)"
+        echo "Current epoch: $EPOCH_TIME"
+        echo "Build number offset: $BUILD_NUMBER_RAW"
+        echo "Formatted build number: $BUILD_NUMBER"
+        echo "Generated version: $VERSION"
+        echo "Monotonic: Yes (always increasing)"
+
+        # Check if this is a release build
+        if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.release }}" == "true" ]]; then
+          echo "is_release=true" >> $GITHUB_OUTPUT
+        else
+          echo "is_release=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Upload build info
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-info
+        path: |
+          ${{ env.GITHUB_WORKSPACE }}/version-info.json
+
+  # Linux builds
+  build-linux:
+    needs: build-info
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+          - platform: linux-arm64
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgtk-3-dev \
+          libwebkit2gtk-4.0-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          patchelf \
+          fuse3 \
+          libfuse3-dev \
+          pkg-config \
+          build-essential \
+          curl \
+          file \
+          software-properties-common \
+          gnupg \
+          git
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache Rust
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+        key: ${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install frontend dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Update version in source
+      run: |
+        ./scripts/version-management.sh
+
+        # Update tauri.conf.json with new version
+        VERSION="${{ needs.build-info.outputs.version }}"
+        sed -i 's/"version": "[^"]*"/"version": "'"$VERSION'"/'/' src-tauri/tauri.conf.json
+        sed -i 's/"productName": "[^"]*"/"productName": "'"'WowUSB-DS9'"/'/' src-tauri/tauri.conf.json
+
+    - name: Build Tauri application
+      uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tauriScript: build
+        args: --target ${{ matrix.target }}
+
+    - name: Build AppImage
+      run: |
+        chmod +x scripts/build-appimage.sh
+        ./scripts/build-appimage.sh ${{ matrix.platform }} ${{ needs.build-info.outputs.version }}
+
+    - name: Build deb package
+      run: |
+        chmod +x scripts/build-deb.sh
+        ./scripts/build-deb.sh ${{ matrix.platform }} ${{ needs.build-info.outputs.version }}
+
+    - name: Sign packages (Linux)
+      if: needs.build-info.outputs.is_release == 'true'
+      run: |
+        chmod +x scripts/package-signing.sh
+        ./scripts/package-signing.sh linux ${{ matrix.platform }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wowusb-ds9-${{ matrix.platform }}
+        path: |
+          src-tauri/target/${{ matrix.target }}/release/bundle/
+          *.AppImage
+          *.deb
+
+  # Windows builds
+  build-windows:
+    needs: build-info
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            arch: x64
+            target: x86_64-pc-windows-msvc
+
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache Rust
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+        key: ${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install frontend dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Update version in source
+      shell: powershell
+      run: |
+        $version = "${{ needs.build-info.outputs.version }}"
+        $cargoContent = Get-Content "src-tauri\Cargo.toml" -Raw
+        $cargoContent = $cargoContent -replace 'version = ".*"', "version = "$version"', $cargoContent
+        Set-Content "src-tauri\Cargo.toml" -Value $cargoContent
+
+        $packageContent = Get-Content "package.json" -Raw
+        $packageContent = $packageContent -replace '"version": ".*"', '"version": "$version"', $packageContent
+        Set-Content "package.json" -Value $packageContent
+
+        $tauriContent = Get-Content "src-tauri\tauri.conf.json" -Raw
+        $tauriContent = $tauriContent -replace '"version": ".*"', '"version": "'$version'"', $tauriContent
+        $tauriContent = $tauriContent -replace '"productName": ".*"', '"productName": "'WowUSB-DS9'"', $tauriContent
+        Set-Content "src-tauri\tauri.conf.json" -Value $tauriContent
+
+    - name: Install WiX Toolset (for MSI)
+      run: |
+        choco install wixtoolset --no-progress
+
+    - name: Add WiX to PATH
+      shell: powershell
+      run: |
+        echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $env:GITHUB_PATH
+        [System.Environment]::SetEnvironmentVariable("PATH", $env:GITHUB_PATH, "Machine")
+
+    - name: Build Tauri application
+      uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tauriScript: build
+        args: --target ${{ matrix.target }}
+
+    - name: Build NSIS installer
+      shell: powershell
+      run: |
+        .\scripts\build-windows-installer.ps1 -Platform ${{ matrix.platform }} -Version ${{ needs.build-info.outputs.version }} -Type nsis
+
+    - name: Build MSI installer
+      shell: powershell
+      run: |
+        .\scripts\build-windows-installer.ps1 -Platform ${{ matrix.platform }} -Version ${{ needs.build-info.outputs.version }} -Type msi
+
+    - name: Sign packages (Windows)
+      if: needs.build-info.outputs.is_release == 'true'
+      shell: powershell
+      env:
+        CODESIGN_CERTIFICATE_BASE64: ${{ secrets.CODESIGN_CERTIFICATE_BASE64 }}
+        CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
+      run: |
+        .\scripts\package-signing.ps1 -Platform ${{ matrix.platform }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wowusb-ds9-${{ matrix.platform }}
+        path: |
+          src-tauri/target/${{ matrix.target }}/release/bundle/
+          *.exe
+          *.msi
+
+  # macOS builds
+  build-macos:
+    needs: build-info
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-x64
+            arch: x64
+            target: x86_64-apple-darwin
+          - platform: macos-arm64
+            arch: arm64
+            target: aarch64-apple-darwin
+
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.target }}
+
+    - name: Cache Rust
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+        key: ${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install frontend dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+
+    -name: Update version in source
+      run: |
+        VERSION="${{ needs.build-info.outputs.version }}"
+
+        # Update Cargo.toml
+        sed -i '' "s/^version = .*/version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+        # Update package.json
+        sed -i '' 's/"version": .*/"version": "\"$VERSION\"/" package.json
+
+        # Update tauri.conf.json
+        sed -i '' "s/"version": .*/"version": "'$VERSION'/" src-tauri/tauri.conf.json
+        sed -i '' "s/"productName": .*/"productName": "'WowUSB-DS9'/" src-tauri/tauri.conf.json
+
+    - name: Build Tauri application
+      uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      with:
+        tauriScript: build
+        args: --target ${{ matrix.target }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: wowusb-ds9-${{ matrix.platform }}
+        path: |
+          src-tauri/target/${{ matrix.target }}/release/bundle/
+
+  # Create combined release
+  create-release:
+    needs: [build-info, build-linux, build-windows, build-macos]
+    if: needs.build-info.outputs.is_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.build-info.outputs.version }}
+        name: 'WowUSB-DS9 ${{ needs.build-info.outputs.version }}'
+        body: |
+          ## 🎉 WowUSB-DS9 ${{ needs.build-info.outputs.version }}
+
+          Cross-platform USB creator with modern interface.
+
+          ### 📦 Downloads
+
+          **Linux:**
+          - **AppImage**: Portable, no installation required
+          - **deb**: Debian/Ubuntu package
+
+          **Windows:**
+          - **exe**: Installer with setup wizard
+          - **msi**: Microsoft Installer package
+
+          **macOS:**
+          - **dmg**: Disk image installer
+          - **app**: Application bundle
+
+          ### 🔐 Verification
+          All packages are digitally signed for security.
+
+          ### 📋 Changes
+          See the [changelog](CHANGELOG.md) for detailed changes.
+        files: |
+          *.AppImage
+          *.deb
+          *.exe
+          *.msi
+          *.dmg
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build status notification
+  build-status:
+    if: always()
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Notify build status
+      run: |
+        echo "🔨 WowUSB-DS9 Build Status"
+        echo "All platform builds completed successfully!"
+        echo "✅ Linux: AppImage, deb packages"
+        echo "✅ Windows: exe, msi installers"
+        echo "✅ macOS: dmg, app bundles"
+        echo ""
+        echo "Build information:"
+        echo "Version: ${{ needs.build-info.outputs.version }}"
+        echo "Build number: ${{ needs.build-info.outputs.build_number }}"
+        echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"

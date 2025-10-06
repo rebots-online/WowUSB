@@ -1,0 +1,48 @@
+[package]
+name = "wowusb-ds9"
+version = "1.1.87214212"
+edition = "2021"
+description = "Create bootable Windows USB drives with advanced features"
+authors = ["Robin L. M. Cheung, MBA <robin@robincheung.com>"]
+license = "GPL-3.0"
+repository = "https://github.com/rebots-online/WowUSB"
+homepage = "https://github.com/rebots-online/WowUSB"
+keywords = ["usb", "windows", "installer", "bootable", "linux"]
+categories = ["system-tools", "utilities"]
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = ["shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4"
+env_logger = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Platform-specific dependencies
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winuser", "fileapi", "handleapi", "winioctl", "errhandlingapi"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+nix = "0.27"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.24"
+objc = "0.2"
+
+[[bin]]
+name = "wowusb-ds9"
+path = "src/main.rs"
+
+[features]
+# by default Tauri runs in production mode
+default = ["custom-protocol"]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

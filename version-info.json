@@ -1,0 +1,18 @@
+{
+  "version": "v1.01.87214212",
+  "major": 1,
+  "minor": "01",
+  "build": "87214212",
+  "build_number_raw": 87214212,
+  "build_number_formatted": "87214212",
+  "epoch_time": 1759745412,
+  "base_epoch": 1672531200,
+  "build_date": "2025-10-06T10:10:12Z",
+  "git_commit": "43a9d4086bce2991d191e2f8a718f38d011ded0c",
+  "platform": "script-run",
+  "build_number_method": "monotonic_offset",
+  "build_number_max_digits": "minimum_5",
+  "monotonic": true,
+  "sorts_correctly": true,
+  "higher_number_more_recent": true
+}
